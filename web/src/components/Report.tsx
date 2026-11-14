@@ -4,10 +4,13 @@ import { api } from "../lib/api";
 import { DECISION_LABEL } from "../lib/format";
 import { Markdown } from "./Markdown";
 import { Results } from "./CodeWorkspace";
+import { Debrief } from "./Debrief";
 
 export function Report({ sessionId, folder, onShowWorkspace }: { sessionId: string; folder: string; onShowWorkspace: () => void }) {
   const [data, setData] = useState<{ evaluation: Evaluation; submit?: RunResult } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"feedback" | "debrief">(location.hash.endsWith("/debrief") ? "debrief" : "feedback");
+  const [lessonCount, setLessonCount] = useState<number | null>(null);
 
   useEffect(() => {
     api.report(sessionId).then(setData, (e) => setError(e.message));
@@ -35,115 +38,130 @@ export function Report({ sessionId, folder, onShowWorkspace }: { sessionId: stri
           </a>
         </div>
       </div>
-      <Markdown className="summary">{e.summary}</Markdown>
-
-      {e.aiUsage && (
-        <>
-          <h2>AI assistant usage</h2>
-          <div className="ai-stats">
-            <Stat n={e.aiUsage.prompts} label="prompts" sub={`${e.aiUsage.promptsWithCode} with code, ${e.aiUsage.promptsWithProblem} with the problem`} />
-            <Stat n={e.aiUsage.codeBlocksOffered} label="code blocks offered" />
-            <Stat n={e.aiUsage.inserts + e.aiUsage.replaces + e.aiUsage.copies} label="blocks used" sub={`${e.aiUsage.inserts} inserted, ${e.aiUsage.replaces} replaced, ${e.aiUsage.copies} copied`} />
-            <Stat n={e.aiUsage.pastes} label="pastes" sub={`${e.aiUsage.pastesFromAi} from the AI`} />
-            <Stat n={`${Math.round(e.aiUsage.aiShare * 100)}%`} label="of final code from AI" sub={`${e.aiUsage.aiLinesInFinal} of ${e.aiUsage.finalLines} lines verbatim`} />
-          </div>
-        </>
-      )}
-
-      <h2>Scorecard{e.rubric ? <span className="muted small"> · {e.rubric}</span> : null}</h2>
-      <div className="dims">
-        {e.dimensions.map((d) => (
-          <div key={d.id} className="dim">
-            <div className="dim-head">
-              <strong>{d.name}</strong>
-              <span className="muted small">{Math.round(d.weight * 100)}%</span>
-            </div>
-            <div className="meter" aria-label={`${d.score} of 4`}>
-              {[1, 2, 3, 4].map((n) => (
-                <span key={n} className={n <= d.score ? `on s${d.score}` : ""} />
-              ))}
-              <b>{d.score}/4</b>
-            </div>
-            <Markdown>{d.feedback}</Markdown>
-            {d.evidence.length > 0 && (
-              <details>
-                <summary className="small">Evidence ({d.evidence.length})</summary>
-                <ul className="evidence">
-                  {d.evidence.map((x, i) => (
-                    <li key={i}>{x}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-          </div>
-        ))}
+      <div className="tabs report-tabs">
+        <button className={tab === "feedback" ? "on" : ""} onClick={() => setTab("feedback")}>
+          Feedback
+        </button>
+        <button className={tab === "debrief" ? "on" : ""} onClick={() => setTab("debrief")}>
+          Debrief & lessons{lessonCount ? ` (${lessonCount})` : ""}
+        </button>
       </div>
 
-      <div className="two-col">
-        <div>
-          <h2>What went well</h2>
-          <ul>
-            {e.strengths.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <h2>What to work on</h2>
-          <ul>
-            {e.improvements.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      {e.followUpFeedback.length > 0 && (
+      {tab === "debrief" ? (
+        <Debrief sessionId={sessionId} onLessonCount={setLessonCount} />
+      ) : (
         <>
-          <h2>Follow-up answers</h2>
-          {e.followUpFeedback.map((f, i) => (
-            <div key={i} className="fu-feedback">
-              <strong>{f.question}</strong>
-              <Markdown>{f.assessment}</Markdown>
+        <Markdown className="summary">{e.summary}</Markdown>
+
+        {e.aiUsage && (
+          <>
+            <h2>AI assistant usage</h2>
+            <div className="ai-stats">
+              <Stat n={e.aiUsage.prompts} label="prompts" sub={`${e.aiUsage.promptsWithCode} with code, ${e.aiUsage.promptsWithProblem} with the problem`} />
+              <Stat n={e.aiUsage.codeBlocksOffered} label="code blocks offered" />
+              <Stat n={e.aiUsage.inserts + e.aiUsage.replaces + e.aiUsage.copies} label="blocks used" sub={`${e.aiUsage.inserts} inserted, ${e.aiUsage.replaces} replaced, ${e.aiUsage.copies} copied`} />
+              <Stat n={e.aiUsage.pastes} label="pastes" sub={`${e.aiUsage.pastesFromAi} from the AI`} />
+              <Stat n={`${Math.round(e.aiUsage.aiShare * 100)}%`} label="of final code from AI" sub={`${e.aiUsage.aiLinesInFinal} of ${e.aiUsage.finalLines} lines verbatim`} />
+            </div>
+          </>
+        )}
+
+        <h2>Scorecard{e.rubric ? <span className="muted small"> · {e.rubric}</span> : null}</h2>
+        <div className="dims">
+          {e.dimensions.map((d) => (
+            <div key={d.id} className="dim">
+              <div className="dim-head">
+                <strong>{d.name}</strong>
+                <span className="muted small">{Math.round(d.weight * 100)}%</span>
+              </div>
+              <div className="meter" aria-label={`${d.score} of 4`}>
+                {[1, 2, 3, 4].map((n) => (
+                  <span key={n} className={n <= d.score ? `on s${d.score}` : ""} />
+                ))}
+                <b>{d.score}/4</b>
+              </div>
+              <Markdown>{d.feedback}</Markdown>
+              {d.evidence.length > 0 && (
+                <details>
+                  <summary className="small">Evidence ({d.evidence.length})</summary>
+                  <ul className="evidence">
+                    {d.evidence.map((x, i) => (
+                      <li key={i}>{x}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           ))}
-        </>
-      )}
+        </div>
 
-      {data.submit && (
-        <>
-          <h2>Submission tests (public + hidden)</h2>
-          <div className="report-results">
-            <Results result={data.submit} />
+        <div className="two-col">
+          <div>
+            <h2>What went well</h2>
+            <ul>
+              {e.strengths.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
           </div>
+          <div>
+            <h2>What to work on</h2>
+            <ul>
+              {e.improvements.map((s, i) => (
+                <li key={i}>{s}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {e.followUpFeedback.length > 0 && (
+          <>
+            <h2>Follow-up answers</h2>
+            {e.followUpFeedback.map((f, i) => (
+              <div key={i} className="fu-feedback">
+                <strong>{f.question}</strong>
+                <Markdown>{f.assessment}</Markdown>
+              </div>
+            ))}
+          </>
+        )}
+
+        {data.submit && (
+          <>
+            <h2>Submission tests (public + hidden)</h2>
+            <div className="report-results">
+              <Results result={data.submit} />
+            </div>
+          </>
+        )}
+
+        <h2>Model answer sketch</h2>
+        <Markdown className="model-answer">{e.modelAnswerSketch}</Markdown>
+
+        <h2>Study next</h2>
+        <div className="tags">
+          {e.studyTopics.map((t) => (
+            <span key={t} className="tag">
+              {t}
+            </span>
+          ))}
+        </div>
+        <ul className="resources">
+          {e.resources.map((r) => (
+            <li key={r.id}>
+              <a href={r.url} target="_blank" rel="noreferrer">
+                {r.title}
+              </a>
+              <div className="muted small">{r.why}</div>
+            </li>
+          ))}
+        </ul>
+
+        <p className="muted small">
+          The full packet, evidence, and <code>report.md</code> are saved in <code>{folder}/</code>.
+        </p>
         </>
       )}
-
-      <h2>Model answer sketch</h2>
-      <Markdown className="model-answer">{e.modelAnswerSketch}</Markdown>
-
-      <h2>Study next</h2>
-      <div className="tags">
-        {e.studyTopics.map((t) => (
-          <span key={t} className="tag">
-            {t}
-          </span>
-        ))}
-      </div>
-      <ul className="resources">
-        {e.resources.map((r) => (
-          <li key={r.id}>
-            <a href={r.url} target="_blank" rel="noreferrer">
-              {r.title}
-            </a>
-            <div className="muted small">{r.why}</div>
-          </li>
-        ))}
-      </ul>
-
-      <p className="muted small">
-        The full packet, evidence, and <code>report.md</code> are saved in <code>{folder}/</code>.
-      </p>
     </div>
   );
 }

@@ -49,10 +49,10 @@ button, .button {
 }
 button:hover:not(:disabled), .button:hover { border-color: #3b4352; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.primary, .button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 button.secondary, .button.secondary { background: #233044; border-color: #2f4260; }
-button.ghost { background: transparent; }
-button.small { padding: 4px 10px; font-size: 13px; }
+button.ghost, .button.ghost { background: transparent; }
+button.small, .button.small { padding: 4px 10px; font-size: 13px; }
 select, textarea, input[type="text"] {
   font: inherit;
   background: var(--panel-2);
@@ -282,3 +282,22 @@ table.sessions { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .ai-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .ai-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
 .ai-stat b { font-size: 20px; }
+
+/* Debrief & lessons */
+.report-tabs { margin: 18px 0 8px; }
+.debrief { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; height: min(72vh, 820px); }
+.debrief-chat { display: flex; flex-direction: column; min-height: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.debrief-list { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.debrief-intro p { margin-top: 0; }
+.starters { display: flex; flex-wrap: wrap; gap: 6px; }
+.debrief-side { display: flex; flex-direction: column; gap: 8px; }
+.debrief-side h3 { margin: 4px 0 0; font-size: 14px; }
+.debrief-side h3 + p { margin: 0; }
+.debrief-side textarea.focus { min-height: 60px; }
+.lesson-links { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.lesson-draft { display: flex; flex-direction: column; gap: 8px; }
+.report.lesson { max-width: 860px; }
+@media (max-width: 800px) {
+  .debrief { grid-template-columns: 1fr; height: auto; }
+  .debrief-chat { height: 70vh; }
+}

@@ -1,4 +1,6 @@
 import type {
+  DebriefEntry,
+  LessonMeta,
   AiLogEntry,
   AppConfig,
   ChatEntry,
@@ -39,6 +41,9 @@ export const api = {
   submit: (id: string, ws: Workspace) => req<SessionView>("POST", `/api/sessions/${id}/submit`, ws),
   aiEvent: (id: string, e: { kind: "insert" | "replace" | "copy"; code: string; source?: "button" | "selection" } | { kind: "paste"; code: string; fromAi: boolean } | { kind: "reset" }) =>
     req<{ entry: AiLogEntry }>("POST", `/api/sessions/${id}/ai-events`, e),
+  debrief: (id: string) => req<{ messages: DebriefEntry[]; lessons: LessonMeta[] }>("GET", `/api/sessions/${id}/debrief`),
+  lesson: (id: string, lessonId: string) => req<{ lesson: LessonMeta; markdown: string }>("GET", `/api/sessions/${id}/lessons/${lessonId}`),
+  lessons: () => req<LessonMeta[]>("GET", "/api/lessons"),
   nextPart: (id: string, ws: CodeWorkspace) => req<SessionView>("POST", `/api/sessions/${id}/next-part`, ws),
   saveFollowUps: (id: string, answers: string[]) => req<{ ok: true }>("POST", `/api/sessions/${id}/followups`, { answers }),
   evaluate: (id: string) => req<{ evaluation: Evaluation; markdown: string }>("POST", `/api/sessions/${id}/evaluate`),
@@ -84,6 +89,42 @@ export async function streamAssistant(
     if (msg.done) out.response = msg.entry;
   });
   return out;
+}
+
+/** POSTs and reads a server-sent-event stream; throws on HTTP errors and on an `error` message. */
+async function postSse(url: string, body: unknown, onMessage: (msg: any) => void): Promise<void> {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? res.statusText);
+  }
+  let error: string | undefined;
+  await readSse(res, (msg) => {
+    if (msg.error) error = msg.error;
+    else onMessage(msg);
+  });
+  if (error) throw new Error(error);
+}
+
+/** Sends a debrief message; streams the coach's reply. */
+export async function streamDebrief(id: string, text: string, onDelta: (t: string) => void): Promise<{ sent?: DebriefEntry; reply?: DebriefEntry }> {
+  const out: { sent?: DebriefEntry; reply?: DebriefEntry } = {};
+  await postSse(`/api/sessions/${id}/debrief`, { text }, (msg) => {
+    if (msg.delta) onDelta(msg.delta);
+    else if (msg.done) out.reply = msg.entry;
+    else if (msg.entry) out.sent = msg.entry;
+  });
+  return out;
+}
+
+/** Generates a lesson; streams the markdown as it's written and returns the saved lesson. */
+export async function streamLesson(id: string, focus: string, onDelta: (t: string) => void): Promise<LessonMeta | undefined> {
+  let lesson: LessonMeta | undefined;
+  await postSse(`/api/sessions/${id}/lessons`, { focus }, (msg) => {
+    if (msg.delta) onDelta(msg.delta);
+    if (msg.done) lesson = msg.lesson;
+  });
+  return lesson;
 }
 
 /** Streams an interviewer reply over server-sent events. */

@@ -12,7 +12,11 @@ export class MockProvider implements LLMProvider {
   async chat(req: ChatRequest, onDelta: (t: string) => void): Promise<string> {
     const last = req.messages.at(-1);
     const text = typeof last?.content === "string" ? last.content : "";
-    const reply = req.system.startsWith("You are an AI coding assistant")
+    const reply = req.system.startsWith("You write personalised study lessons")
+      ? "# Mock lesson: hash maps for complement lookups\n\n## Why this lesson\n(mock) Add an API key to get a real lesson.\n\n## The concept\nStore what you've seen so each lookup is O(1).\n\n## What happened, and the stronger move\n- (mock moment)\n\n## Worked example\n```python\ndef two_sum(nums, target):\n    seen = {}\n    for i, x in enumerate(nums):\n        if target - x in seen:\n            return [seen[target - x], i]\n        seen[x] = i\n```\n\n## Interview technique\nState the brute force first.\n\n## Practice\n1. Three Sum. *Hint: sort first.*\n\n## Answers\n1. Sort, then two pointers per element.\n\n## Checklist for next time\n- Clarify duplicates.\n\n## Further reading\n- [Tech Interview Handbook — Hash table cheatsheet](https://www.techinterviewhandbook.org/algorithms/hash-table/): practice the patterns.\n"
+      : req.system.startsWith("You are a senior engineer and interview coach")
+        ? "(mock coach) The biggest gain would have come from stating your approach and its complexity before coding. Want me to walk through that moment?"
+        : req.system.startsWith("You are an AI coding assistant")
       ? "(mock assistant) Here's a sketch you could start from:\n\n```python\ndef helper(words):\n    seen = set()\n    for w in words:\n        seen.add(w)\n    return seen\n```\n\nCheck the edge cases before using it."
       : text.includes("joined the interview room")
       ? "Hi, thanks for joining! I'm your interviewer today. Take a moment to read the problem, and feel free to ask clarifying questions before you start."

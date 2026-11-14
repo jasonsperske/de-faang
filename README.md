@@ -12,6 +12,7 @@ Take the fear out of FAANG interviews. **de-faang** runs realistic coding and sy
 - **Multipart questions.** Later parts are revealed only when you hand in the current one, like a real round where the interviewer says "now let's extend this". Your code carries over between parts.
 - **AI-assisted rounds.** An AI assistant in the console analyses, explains, reviews or writes code, with a configurable helpfulness level. Every prompt, what you attached, the replies, and what you inserted, copied or pasted is recorded and graded with an AI-specific rubric.
 - **Follow-up questions** after you submit, answered in writing.
+- **Debrief & lessons.** After the evaluation, talk the round over with a coach that has seen everything, then turn it into a personalised lesson with practice exercises.
 - **Evaluation packet → rubric scorecard.** Per-dimension 1–4 scores with quoted evidence, a hire/no-hire signal, strengths, improvements, a model answer sketch, and curated resource links.
 
 Every round lives in its own folder under `sessions/`, which git ignores, so your repo stays clean.
@@ -61,8 +62,20 @@ sessions/2026-11-14_0341_two-sum_d70a/
 ├── runs/                 run-001.json … submit.json
 ├── evidence/             submission, test-results.json, run-history.md, transcript.md, followups.md, packet.md
 ├── evaluation.json
-└── report.md
+├── report.md
+├── debrief.jsonl         post-round coaching chat
+└── lessons/              lesson-001.md … + index.json
 ```
+
+## Debrief and lessons
+
+Once a round is evaluated, the report has a **Debrief & lessons** tab.
+
+- **Debrief chat:** a coach that has the full packet (question, interviewer notes and hint ladder, your code or design, tests, run history, transcript, AI usage, follow-up answers) and the evaluation report. The round is over, so it discusses everything openly. Ask how you could have done better, dig into a specific moment, argue with a score, or ask to be quizzed. Starter questions are offered, and the chat is saved to `debrief.jsonl`.
+- **Create lesson:** writes a personalised lesson from the round, its evaluation and the debrief so far. You can give it an optional focus (e.g. "edge cases I missed"). Every lesson has the same sections: why this lesson, the concept, what happened and the stronger move, a worked example (in your language), interview technique, practice exercises with answers, a checklist for next time, and further reading. Links come only from the resource library.
+- Lessons are saved as `lessons/lesson-NNN.md` in the session folder. Each one has its own page with **Download .md** and **Practise this question again**, and they're all listed under **Lessons** on the home page.
+
+The debrief and lessons use the same LLM provider as the round.
 
 ## Adding questions
 
@@ -162,6 +175,7 @@ server/   Fastify API
                 (generated starters, multipart stubs), Docker/local executor, result comparison
   interviewer.ts  persona and strictness prompts, workspace snapshots
   assistant.ts    AI assistant: helpfulness policies, request composition, usage analysis
+  debrief.ts      post-round debrief chat and lesson generation/storage
   evaluator.ts    packet assembly, rubric scoring, report rendering
   sessions.ts     session-folder storage
 shared/   types shared by the server and the UI

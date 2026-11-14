@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AppConfig, InterviewFormat, Language, Provider, QuestionSummary, SessionListItem, Strictness, Verbosity } from "../../../shared/types";
+import type { AppConfig, InterviewFormat, Language, LessonMeta, Provider, QuestionSummary, SessionListItem, Strictness, Verbosity } from "../../../shared/types";
 import { LANGUAGES } from "../../../shared/types";
 import { api } from "../lib/api";
 import { DECISION_LABEL, STRICTNESS, VERBOSITY } from "../lib/format";
@@ -10,16 +10,22 @@ export function Home() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [questions, setQuestions] = useState<QuestionSummary[]>([]);
   const [sessions, setSessions] = useState<SessionListItem[]>([]);
+  const [lessons, setLessons] = useState<LessonMeta[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
   const [picked, setPicked] = useState<QuestionSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.config(), api.questions(), api.sessions()])
-      .then(([c, q, s]) => {
+    Promise.all([api.config(), api.questions(), api.sessions(), api.lessons()])
+      .then(([c, q, s, l]) => {
         setConfig(c);
         setQuestions(q);
         setSessions(s);
+        setLessons(l);
+        // #/?start=<question id> (e.g. "Practise this question again" on a lesson) opens its setup dialog.
+        const start = new URLSearchParams(location.hash.split("?")[1] ?? "").get("start");
+        const pick = start ? q.find((x) => x.id === start) : undefined;
+        if (pick) setPicked(pick);
       })
       .catch((e) => setError(e.message));
   }, []);
@@ -118,7 +124,38 @@ export function Home() {
         )}
       </section>
 
-      {picked && config && <SetupDialog q={picked} config={config} onClose={() => setPicked(null)} />}
+      {lessons.length > 0 && (
+        <section>
+          <h2>Lessons</h2>
+          <table className="sessions">
+            <thead>
+              <tr>
+                <th>Lesson</th>
+                <th>From</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lessons.map((l) => (
+                <tr key={`${l.sessionId}/${l.id}`} onClick={() => (location.hash = `#/lesson/${l.sessionId}/${l.id}`)}>
+                  <td>{l.title}</td>
+                  <td>{l.questionTitle}</td>
+                  <td>{new Date(l.createdAt).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {picked && config && <SetupDialog
+          q={picked}
+          config={config}
+          onClose={() => {
+            setPicked(null);
+            if (location.hash.includes("?")) history.replaceState(null, "", "#/");
+          }}
+        />}
     </div>
   );
 }

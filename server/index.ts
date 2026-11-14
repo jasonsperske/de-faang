@@ -15,6 +15,7 @@ import { getProvider, LLMError, providerInfo } from "./llm/index.ts";
 import { buildChatMessages, interviewerSystemPrompt, summarizeRun, workspaceSnapshot } from "./interviewer.ts";
 import { evaluate } from "./evaluator.ts";
 import * as S from "./sessions.ts";
+import { allLessons, appendDebrief, debriefMessages, debriefSystemPrompt, lessonSystemPrompt, listLessons, readDebrief, readLesson, saveLesson } from "./debrief.ts";
 import { aiTimeline, aiUsage, assistantMessages, assistantSystemPrompt, composePrompt, DEFAULT_POLICY, loadPolicies, usageLine } from "./assistant.ts";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" }, bodyLimit: 25 * 1024 * 1024 });
@@ -422,6 +423,95 @@ app.post("/api/sessions/:id/chat", async (req, reply) => {
     reply.raw.end();
   }
 });
+
+// ---------------------------------------------------------------- debrief & lessons (after evaluation)
+
+const debriefBusy = new Set<string>();
+
+function evaluatedSession(id: string) {
+  const state = S.loadState(id);
+  if (state.status !== "evaluated") throw Object.assign(new Error("The debrief opens once the round has been evaluated."), { statusCode: 409 });
+  if (debriefBusy.has(id)) throw Object.assign(new Error("The coach is still replying."), { statusCode: 429 });
+  return state;
+}
+
+app.get("/api/sessions/:id/debrief", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  S.loadState(id);
+  return { messages: readDebrief(id), lessons: listLessons(id) };
+});
+
+app.post("/api/sessions/:id/debrief", async (req, reply) => {
+  const { id } = IdParams.parse(req.params);
+  const { text } = z.object({ text: z.string().trim().min(1).max(20_000) }).parse(req.body);
+  const state = evaluatedSession(id);
+  const q = getQuestion(state.questionId);
+  const entry = appendDebrief(id, { role: "candidate", text });
+  const send = sse(reply);
+  const abort = new AbortController();
+  reply.raw.on("close", () => abort.abort());
+  debriefBusy.add(id);
+  try {
+    send({ entry });
+    const provider = getProvider(state.config.provider);
+    const out = await provider.chat({ system: debriefSystemPrompt(q, state), messages: debriefMessages(readDebrief(id)), effort: "medium" }, (delta) => send({ delta }), abort.signal);
+    send({ done: true, entry: appendDebrief(id, { role: "coach", text: out }) });
+  } catch (err) {
+    app.log.error(err);
+    send({ error: err instanceof LLMError ? err.message : `Coach error: ${(err as Error).message}` });
+  } finally {
+    debriefBusy.delete(id);
+    reply.raw.end();
+  }
+});
+
+/** Writes a lesson from the round, its evaluation and the debrief so far (streamed as it's written). */
+app.post("/api/sessions/:id/lessons", async (req, reply) => {
+  const { id } = IdParams.parse(req.params);
+  const { focus } = z.object({ focus: z.string().max(2_000).optional() }).parse(req.body ?? {});
+  const state = evaluatedSession(id);
+  const q = getQuestion(state.questionId);
+  const send = sse(reply);
+  const abort = new AbortController();
+  reply.raw.on("close", () => abort.abort());
+  debriefBusy.add(id);
+  try {
+    const provider = getProvider(state.config.provider);
+    const markdown = await provider.chat(
+      {
+        system: lessonSystemPrompt(q, state, readDebrief(id), focus),
+        messages: [{ role: "user", content: focus?.trim() ? `Write the lesson, focused on: ${focus.trim()}` : "Write the lesson." }],
+        effort: "high",
+      },
+      (delta) => send({ delta }),
+      abort.signal,
+    );
+    if (!markdown.trim()) throw new LLMError("The lesson came back empty. Try again.");
+    send({ done: true, lesson: saveLesson(state, q, markdown, { focus, provider: provider.id, model: provider.model }) });
+  } catch (err) {
+    app.log.error(err);
+    send({ error: err instanceof LLMError ? err.message : `Lesson error: ${(err as Error).message}` });
+  } finally {
+    debriefBusy.delete(id);
+    reply.raw.end();
+  }
+});
+
+const LessonParams = z.object({ id: z.string(), lessonId: z.string() });
+
+app.get("/api/sessions/:id/lessons/:lessonId", async (req) => {
+  const { id, lessonId } = LessonParams.parse(req.params);
+  return readLesson(id, lessonId);
+});
+
+app.get("/api/sessions/:id/lessons/:lessonId/download", async (req, reply) => {
+  const { id, lessonId } = LessonParams.parse(req.params);
+  const { lesson, markdown } = readLesson(id, lessonId);
+  const name = `${lesson.questionId}-${lesson.id}.md`;
+  return reply.header("Content-Type", "text/markdown; charset=utf-8").header("Content-Disposition", `attachment; filename="${name}"`).send(markdown);
+});
+
+app.get("/api/lessons", async () => allLessons());
 
 // ---------------------------------------------------------------- static UI (production)
 

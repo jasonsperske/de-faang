@@ -239,3 +239,23 @@ export interface AppConfig {
   /** Helpfulness presets for the AI assistant in AI-assisted rounds. */
   aiPolicies: AiPolicy[];
 }
+
+/** A message in the post-interview debrief (sessions/<id>/debrief.jsonl). */
+export interface DebriefEntry {
+  role: "candidate" | "coach";
+  text: string;
+  at: string;
+}
+
+/** A lesson generated from a completed round (sessions/<id>/lessons/<id>.md). */
+export interface LessonMeta {
+  id: string;
+  sessionId: string;
+  questionId: string;
+  questionTitle: string;
+  title: string;
+  focus?: string;
+  createdAt: string;
+  provider: Provider;
+  model: string;
+}
