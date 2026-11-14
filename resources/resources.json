@@ -54,5 +54,10 @@
   { "id": "s3-multipart-upload", "title": "AWS docs — Uploading and copying objects using multipart upload", "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html", "topics": ["resumable uploads", "object storage"] },
   { "id": "adaptive-bitrate-streaming", "title": "Wikipedia — Adaptive bitrate streaming", "url": "https://en.wikipedia.org/wiki/Adaptive_bitrate_streaming", "topics": ["video delivery", "hls", "cdn"] },
   { "id": "tih-binary", "title": "Tech Interview Handbook — Binary cheatsheet", "url": "https://www.techinterviewhandbook.org/algorithms/binary/", "topics": ["bit manipulation", "binary"] },
-  { "id": "russian-peasant-multiplication", "title": "Wikipedia — Ancient Egyptian (Russian peasant) multiplication", "url": "https://en.wikipedia.org/wiki/Ancient_Egyptian_multiplication", "topics": ["shift-and-add multiplication", "binary expansion"] }
+  { "id": "russian-peasant-multiplication", "title": "Wikipedia — Ancient Egyptian (Russian peasant) multiplication", "url": "https://en.wikipedia.org/wiki/Ancient_Egyptian_multiplication", "topics": ["shift-and-add multiplication", "binary expansion"] },
+  { "id": "sr-iov-wiki", "title": "Wikipedia — Single-root input/output virtualization", "url": "https://en.wikipedia.org/wiki/Single-root_input/output_virtualization", "topics": ["sr-iov", "virtual functions", "pci passthrough"] },
+  { "id": "linux-pci-iov", "title": "Linux kernel docs — PCI Express I/O Virtualization Howto", "url": "https://docs.kernel.org/PCI/pci-iov-howto.html", "topics": ["sr-iov", "physical and virtual functions"] },
+  { "id": "linux-vfio", "title": "Linux kernel docs — VFIO (Virtual Function I/O)", "url": "https://docs.kernel.org/driver-api/vfio.html", "topics": ["device passthrough", "iommu", "iommu groups"] },
+  { "id": "virtio-spec", "title": "OASIS — Virtual I/O Device (VIRTIO) specification v1.2", "url": "https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.html", "topics": ["virtio", "paravirtual devices"] },
+  { "id": "linux-net-failover", "title": "Linux kernel docs — NET_FAILOVER", "url": "https://docs.kernel.org/networking/net_failover.html", "topics": ["live migration", "virtio and vf failover"] }
 ]
