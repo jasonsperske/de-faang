@@ -20,6 +20,8 @@ jobs:
     env:
       # Hide Docker so the compiled-language tests skip; the sandbox job covers them.
       DOCKER_HOST: unix:///nonexistent.sock
+      # Both the app (npm run validate) and the tests run code with host interpreters.
+      DEFAANG_RUNNER: local
       DEFAANG_TEST_RUNNER: local
     steps:
       - uses: actions/checkout@v4
