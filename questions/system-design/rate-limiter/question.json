@@ -1,0 +1,41 @@
+{
+  "id": "rate-limiter",
+  "title": "Design a Distributed Rate Limiter",
+  "type": "system-design",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["system-design", "distributed-systems", "algorithms", "redis"],
+  "rubric": "system-design",
+  "followUps": [
+    "Compare fixed window, sliding window log, sliding window counter, and token bucket. Which did you pick, and why?",
+    "Your rate limiter runs on 50 API gateway nodes. How do they share state, and what happens when the shared store is slow or down? Do you fail open or fail closed?",
+    "How do you avoid race conditions when two requests for the same user hit different nodes at the same instant?",
+    "How would you support different limits per customer tier and per endpoint, changeable without a deploy?",
+    "What does the client see when it is rate limited, and how should well-behaved clients react?"
+  ],
+  "interviewer": {
+    "approach": "Strong answers: clarify where the limiter lives (client, gateway or middleware, separate service), the limiting key (user, API key, IP), rules (per endpoint, per tier), and accuracy versus latency requirements. Compare algorithms: token bucket allows bursts; sliding window counter is memory-efficient and accurate enough; sliding log is precise but memory-heavy. Distributed state in Redis with atomic operations (Lua script or INCR+EXPIRE), possibly with local in-memory counters plus periodic sync to reduce latency. Rules stored in a config service and cached. Return HTTP 429 with Retry-After and X-RateLimit-* headers. Discuss fail-open vs fail-closed, Redis sharding by key, hot keys, clock skew, and multi-region tradeoffs.",
+    "hints": [
+      "Where in the request path should the limiter sit, and what identifies a caller?",
+      "What algorithms do you know for counting requests in a time window? What does each cost in memory and accuracy?",
+      "If many gateway nodes count independently, the limit is wrong. Where can shared counters live, and how do you update them atomically?",
+      "What should happen to traffic when the counter store is unavailable?"
+    ],
+    "pitfalls": [
+      "Fixed window without acknowledging the boundary burst problem.",
+      "Read-then-write counter updates without atomicity (race conditions).",
+      "Adding a synchronous network hop with no latency budget discussion.",
+      "Ignoring the failure mode of the shared store."
+    ],
+    "facts": [
+      "This protects a public REST API used by about 10M daily active clients.",
+      "Peak traffic is about 1M requests per second across all endpoints.",
+      "Limits are per API key and per endpoint, e.g. 100 requests per minute for the free tier and 10,000 per minute for enterprise.",
+      "The limiter must add less than 5ms p99 latency.",
+      "A small amount of over-admission (about 1-2%) is acceptable; hard accuracy is not required.",
+      "The API runs in 3 regions; per-region limits are acceptable for v1."
+    ],
+    "deepDives": ["Algorithm choice and burst behaviour", "Atomic distributed counters", "Failure modes and fail-open", "Rule configuration and propagation"]
+  },
+  "resources": ["stripe-rate-limiters", "token-bucket", "sdp-primer", "bytebytego", "latency-numbers", "hellointerview"]
+}

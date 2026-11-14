@@ -1,0 +1,47 @@
+{
+  "name": "de-faang",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local, LLM-powered mock interviews for FAANG-style coding and system design rounds.",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,magenta \"tsx watch --clear-screen=false server/index.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "vite build && NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit",
+    "test": "vitest run",
+    "validate": "tsx server/scripts/validate-questions.ts",
+    "docker:pull": "docker pull python:3.12-slim && docker pull node:22-slim"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@excalidraw/excalidraw": "^0.18.1",
+    "@fastify/static": "^10.1.11",
+    "@google/genai": "^3.3.0",
+    "@monaco-editor/react": "^4.7.0",
+    "dotenv": "^18.0.10",
+    "fastify": "^5.12.8",
+    "monaco-editor": "^0.57.0",
+    "openai": "^7.57.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-resizable-panels": "^4.22.1",
+    "remark-gfm": "^4.0.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^6.3.0",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
+  }
+}

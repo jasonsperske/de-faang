@@ -1,0 +1,77 @@
+{
+  "id": "system-design",
+  "name": "System design interview rubric",
+  "scale": {
+    "1": "Strong concern: significant gaps; would not pass this dimension at the target level.",
+    "2": "Below bar: partially demonstrated, shallow, or needed heavy steering.",
+    "3": "At bar: solid and well reasoned with minor gaps; meets senior expectations.",
+    "4": "Above bar: drove the discussion, went deep, and showed staff-level judgment."
+  },
+  "dimensions": [
+    {
+      "id": "requirements",
+      "name": "Requirements & scoping",
+      "weight": 0.2,
+      "signals": "Clarified functional and non-functional requirements; asked for scale; did back-of-the-envelope estimates (QPS, storage, bandwidth); scoped the problem to what matters.",
+      "levels": {
+        "1": "No clarification; designed for an unstated problem.",
+        "2": "Some requirements gathered but missed key non-functional needs or never estimated.",
+        "3": "Clear functional and non-functional requirements with reasonable estimates that informed the design.",
+        "4": "Crisp scoping, prioritized requirements, and estimates that directly drove decisions."
+      },
+      "resources": ["sdp-primer", "latency-numbers", "hellointerview"]
+    },
+    {
+      "id": "high_level",
+      "name": "High-level design",
+      "weight": 0.25,
+      "signals": "Coherent architecture with clear components and data flow; APIs defined; data model defined; diagram communicates the design.",
+      "levels": {
+        "1": "Missing or incoherent architecture.",
+        "2": "Plausible components but unclear data flow, APIs, or data model.",
+        "3": "Complete and coherent design with APIs, data model, and a clear diagram.",
+        "4": "Elegant, well-justified design; every component has a clear reason to exist."
+      },
+      "resources": ["sdp-primer", "bytebytego"]
+    },
+    {
+      "id": "deep_dive",
+      "name": "Deep dive & technical depth",
+      "weight": 0.25,
+      "signals": "Went deep on the hardest components (e.g. ID generation, consistency, caching, partitioning); showed real knowledge of the technologies chosen; handled the follow-up probes.",
+      "levels": {
+        "1": "Stayed superficial; buzzwords without substance.",
+        "2": "Some depth, but with technical errors or gaps when probed.",
+        "3": "Solid depth on key components with correct technical reasoning.",
+        "4": "Expert depth; anticipated subtle issues and proposed robust solutions."
+      },
+      "resources": ["ddia", "sdp-primer", "consistent-hashing"]
+    },
+    {
+      "id": "scalability",
+      "name": "Scalability, reliability & tradeoffs",
+      "weight": 0.2,
+      "signals": "Identified bottlenecks and single points of failure; discussed scaling (sharding, replication, caching, queues); explicit tradeoffs (consistency vs availability, latency vs accuracy, cost); failure modes and monitoring.",
+      "levels": {
+        "1": "No discussion of scale or failure.",
+        "2": "Generic scaling remarks not tied to this system's bottlenecks.",
+        "3": "Found the real bottlenecks and made reasoned tradeoffs.",
+        "4": "Thorough treatment of failure modes, tradeoffs, and operational concerns, with sound judgment."
+      },
+      "resources": ["ddia", "sre-book", "bytebytego"]
+    },
+    {
+      "id": "communication",
+      "name": "Communication & leadership",
+      "weight": 0.1,
+      "signals": "Drove the conversation with structure; checked in with the interviewer; responded to pushback; follow-up answers were clear.",
+      "levels": {
+        "1": "Disorganized; the interviewer had to drive.",
+        "2": "Somewhat structured, but reactive.",
+        "3": "Structured, collaborative, and responsive.",
+        "4": "Led confidently with excellent structure and time management."
+      },
+      "resources": ["hellointerview"]
+    }
+  ]
+}

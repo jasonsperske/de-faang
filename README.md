@@ -1,0 +1,111 @@
+# de-faang 🦷
+
+Take the fear out of FAANG interviews. **de-faang** runs realistic coding and system design rounds on your own machine, with an LLM interviewer (Claude, Codex, Gemini, or Meta's Muse) that talks with you in real time, and a rubric-based evaluation afterward that links to resources for what to study next.
+
+- **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, or TypeScript; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
+- **System design whiteboard.** Excalidraw canvas plus a markdown notes pad. The interviewer "sees" your diagram as a text summary on every turn, and the evaluator gets the PNG.
+- **Configurable interviewer**
+  - **Strict:** the prompt only. No sample tests, no hints, neutral tone. Hidden test details stay hidden until the evaluation.
+  - **Standard:** sample tests visible, expected output for your custom inputs, and hints only when you ask.
+  - **Coach:** proactive hints, reactions to every test run, and coaching on interview technique.
+  - **Verbosity:** terse, normal, or detailed (for both the chat and the report).
+- **Follow-up questions** after you submit, answered in writing.
+- **Evaluation packet → rubric scorecard.** Per-dimension 1–4 scores with quoted evidence, a hire/no-hire signal, strengths, improvements, a model answer sketch, and curated resource links.
+
+Every round lives in its own folder under `sessions/`, which git ignores, so your repo stays clean.
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env          # add at least one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, META_API_KEY
+npm run docker:pull           # pre-pull python:3.12-slim and node:22-slim (the first run also auto-pulls)
+npm run dev                   # API on :4317, UI on http://localhost:5173
+```
+
+Or run a single production server with `npm start`, which builds the UI and serves it at http://localhost:4317.
+
+To click through the UI without API keys or token spend, set `DEFAANG_MOCK_LLM=1`. The interviewer and evaluator then return canned text.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | | Enables the Claude interviewer. An `ant auth login` profile also works. |
+| `OPENAI_API_KEY` | | Enables the Codex interviewer. |
+| `GEMINI_API_KEY` | | Enables the Gemini interviewer. |
+| `META_API_KEY` | | Enables the Muse interviewer ([Meta Model API](https://dev.meta.ai/docs/overview)). `MODEL_API_KEY` also works. |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | |
+| `OPENAI_MODEL` | `gpt-5.3-codex` | Any Responses-API model. |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | e.g. `gemini-4-argon` if your key has access. |
+| `MUSE_MODEL` | `muse-spark-1.3` | `muse-wonder-1.0` is Meta's most capable model (preview); `muse-ember-1.0` is the efficient one. |
+| `DEFAANG_RUNNER` | `docker` | `local` runs code with your host's `python3`/`node`, with **no isolation**. |
+| `DEFAANG_RUN_TIMEOUT` | `10` | Seconds per run. |
+| `DEFAANG_MOCK_LLM` | | `1` = offline canned responses. |
+
+## How a round works
+
+1. **Pick a question** and choose interviewer, strictness, verbosity, and language. This creates `sessions/<date>_<time>_<question>_<id>/`.
+2. **Interview.** The interviewer opens the round. Think out loud in the chat; each message carries a snapshot of your code (or notes and diagram) plus recent test runs. **Run** executes the sample tests and your custom inputs.
+3. **Submit.** Coding runs the public and hidden tests; design exports the whiteboard. Your work freezes into `evidence/`.
+4. **Follow-ups.** Answer the question's follow-up prompts. They autosave to `evidence/followups.md`.
+5. **Evaluate.** The packet (prompt, interviewer notes, final work, test results, run history, transcript, follow-ups, and the diagram image) is graded against the rubric with structured output. The server computes the weighted score and decision. Results land in `evaluation.json` and `report.md`.
+
+```
+sessions/2026-11-14_0341_two-sum_d70a/
+├── session.json          config + state
+├── prompt.md
+├── transcript.jsonl      interviewer chat
+├── workspace/            live autosave (solution.py, design.md, design.excalidraw, design.png)
+├── runs/                 run-001.json … submit.json
+├── evidence/             submission, test-results.json, run-history.md, transcript.md, followups.md, packet.md
+├── evaluation.json
+└── report.md
+```
+
+## Adding questions
+
+Each question is a folder. Run `npm run validate` after editing: it checks the schema and resource ids, and runs `reference.py` against every test.
+
+```
+questions/coding/<id>/
+  question.json      metadata, signature, follow-ups, private interviewer notes, resource ids
+  prompt.md          what the candidate sees
+  tests.json         { "public": [...], "hidden": [...] }
+  reference.py       reference solution; also produces expected output for custom inputs
+  starter/solution.{py,js,ts}
+
+questions/system-design/<id>/
+  question.json      includes interviewer.facts (revealed only when asked) and deepDives
+  prompt.md
+```
+
+- **Function questions:** each test is `{ "args": [arg1, arg2], "expected": ... }`. Entry-point names can differ per language (`two_sum` vs `twoSum`).
+- **Class questions** (e.g. LRU cache) use the LeetCode convention: `{ "ops": ["LRUCache", "put", "get"], "args": [[2], [1, 1], [1]], "expected": [null, null, 1] }`.
+- **`signature.compare`:** `exact` (the default; floats compared with a tolerance) or `unordered`, which ignores top-level array order.
+- **Rubrics** live in `rubrics/*.json` (weighted dimensions with 1–4 level descriptors).
+- **Resources** live in `resources/resources.json`. The evaluator can link **only** to ids in this library, so links can't be hallucinated.
+
+## Architecture
+
+```
+web/      React + Vite UI (Monaco, Excalidraw, react-markdown)
+server/   Fastify API
+  llm/          provider interface → Claude (Anthropic SDK) / Codex + Muse (OpenAI Responses API; Muse via
+                Meta's api.meta.ai/v1) / Gemini (@google/genai) / mock. All stream chat and return schema-constrained JSON.
+  runner/       harness that appends to your code + Docker/local executor + result comparison
+  interviewer.ts  persona and strictness prompts, workspace snapshots
+  evaluator.ts    packet assembly, rubric scoring, report rendering
+  sessions.ts     session-folder storage
+shared/   types shared by the server and the UI
+```
+
+How the runner works: your code is concatenated with a small language-specific harness, so error line numbers match the editor. The harness reads test cases on stdin, calls your function or class for each case while capturing stdout, errors, and timing, and prints one JSON result line. The Docker sandbox runs with `--network none`, a read-only filesystem, 512 MB of memory, 1 CPU, a 64-process cap, and an unprivileged user.
+
+Claude requests enable server-side refusal fallbacks (`fallbacks: "default"`), so a safety-classifier false positive doesn't end an interview turn. The interviewer's system prompt is cached across turns.
+
+## Tests
+
+```bash
+npm test                                  # runner tests (local runner, fast)
+DEFAANG_TEST_RUNNER=docker npm test       # same tests through the Docker sandbox
+npm run typecheck
+```

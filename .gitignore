@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.env
+# Every interview round runs in its own folder under sessions/ — kept out of git.
+sessions/
+*.log

@@ -1,0 +1,77 @@
+{
+  "id": "coding",
+  "name": "Coding interview rubric",
+  "scale": {
+    "1": "Strong concern: significant gaps; would not pass this dimension at the target level.",
+    "2": "Below bar: partially demonstrated, needed substantial help, or had notable errors.",
+    "3": "At bar: solid, with minor gaps; meets FAANG mid/senior expectations.",
+    "4": "Above bar: exceptional, independent, insightful, and polished."
+  },
+  "dimensions": [
+    {
+      "id": "problem_solving",
+      "name": "Problem understanding & approach",
+      "weight": 0.25,
+      "signals": "Asked clarifying questions about inputs, constraints, and edge cases before coding; stated a brute-force baseline; reasoned toward a better approach; compared alternatives; made deliberate decisions instead of guessing.",
+      "levels": {
+        "1": "Started coding without understanding the problem; could not produce a working approach even with hints.",
+        "2": "Reached an approach only with significant hints; little exploration of alternatives.",
+        "3": "Clarified the problem, found an efficient approach with at most light nudges, and explained why it works.",
+        "4": "Quickly identified the core insight, compared multiple approaches with tradeoffs, and anticipated follow-ups."
+      },
+      "resources": ["tih-techniques", "tih-cheatsheet", "neetcode-roadmap"]
+    },
+    {
+      "id": "algorithms",
+      "name": "Algorithms & complexity",
+      "weight": 0.2,
+      "signals": "Chose appropriate data structures; reached the optimal or near-optimal complexity; stated time and space complexity correctly and justified it.",
+      "levels": {
+        "1": "Inefficient solution with incorrect or missing complexity analysis.",
+        "2": "Working but sub-optimal solution, or optimal but with shaky or incorrect analysis.",
+        "3": "Optimal or near-optimal solution with a correct complexity analysis.",
+        "4": "Optimal solution, precise analysis including tradeoffs and lower bounds, and awareness of constant factors."
+      },
+      "resources": ["big-o-cheatsheet", "neetcode-roadmap"]
+    },
+    {
+      "id": "code_quality",
+      "name": "Coding & correctness",
+      "weight": 0.25,
+      "signals": "Code compiles or runs and passes the hidden tests; readable naming and structure; idiomatic use of the language; no needless complexity; handles edge cases in code.",
+      "levels": {
+        "1": "Code does not run or fails most tests; hard to follow.",
+        "2": "Partially correct; noticeable bugs, awkward structure, or non-idiomatic code.",
+        "3": "Correct on nearly all tests; clean and readable with minor issues.",
+        "4": "Fully correct, clean, idiomatic, and production-quality on the first or second try."
+      },
+      "resources": ["tih-cheatsheet"]
+    },
+    {
+      "id": "testing",
+      "name": "Testing & debugging",
+      "weight": 0.15,
+      "signals": "Traced through examples by hand or ran tests deliberately; considered edge cases (empty input, duplicates, negatives, bounds); debugged failures methodically instead of guessing.",
+      "levels": {
+        "1": "No testing; submitted without verification; random changes when tests failed.",
+        "2": "Ran the provided samples only; limited edge-case thinking.",
+        "3": "Tested meaningful edge cases and debugged failures methodically.",
+        "4": "Proactively designed tests that target risky logic, and caught their own bugs before running."
+      },
+      "resources": ["tih-techniques"]
+    },
+    {
+      "id": "communication",
+      "name": "Communication",
+      "weight": 0.15,
+      "signals": "Thought out loud; explained the plan before coding; responded well to hints and questions; was concise and structured; follow-up answers were clear and correct.",
+      "levels": {
+        "1": "Silent or confusing; ignored interviewer input.",
+        "2": "Some explanation, but disorganized or reactive; follow-up answers weak.",
+        "3": "Clear explanations, collaborative, and solid follow-up answers.",
+        "4": "Exceptionally clear and structured; led the conversation; follow-up answers were insightful."
+      },
+      "resources": ["tih-techniques"]
+    }
+  ]
+}

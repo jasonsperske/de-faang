@@ -1,0 +1,34 @@
+{
+  "id": "top-k-frequent",
+  "title": "Top K Frequent Elements",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 30,
+  "tags": ["hash-map", "heap", "bucket-sort"],
+  "rubric": "coding",
+  "signature": {
+    "kind": "function",
+    "entry": { "python": "top_k_frequent", "javascript": "topKFrequent", "typescript": "topKFrequent" },
+    "compare": "unordered"
+  },
+  "followUps": [
+    "Compare the complexity of sorting all counts, using a size-k heap, and bucket sort. When would you choose each?",
+    "How would you compute the top k over a stream of elements that never ends?",
+    "How would you compute an approximate top k across logs spread over thousands of machines?",
+    "How does your solution behave if k equals the number of distinct elements?"
+  ],
+  "interviewer": {
+    "approach": "Count with a hash map (O(n)). Then either sort by count O(u log u), keep a min-heap of size k O(u log k), or bucket sort by frequency O(n). Bucket sort is the optimal answer; a heap is a strong answer. Quickselect is O(u) average.",
+    "hints": [
+      "Start by figuring out how often each element appears. What structure makes that easy?",
+      "Once you have counts, do you need to fully sort them to get the top k? What structure keeps only the k best?",
+      "Frequencies are bounded by n. Could you index buckets by frequency instead of sorting?"
+    ],
+    "pitfalls": [
+      "Using a max-heap over all elements (O(u log u)) and claiming O(n log k).",
+      "Returning counts instead of elements.",
+      "Off-by-one in bucket sizes (frequency can equal n)."
+    ]
+  },
+  "resources": ["tih-heap", "tih-hash-table", "py-heapq", "big-o-cheatsheet"]
+}

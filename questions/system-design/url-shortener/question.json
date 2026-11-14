@@ -1,0 +1,42 @@
+{
+  "id": "url-shortener",
+  "title": "Design a URL Shortener",
+  "type": "system-design",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["system-design", "storage", "caching", "id-generation"],
+  "rubric": "system-design",
+  "followUps": [
+    "How do you generate short codes so that two writers never collide? Compare a hash-based approach with a counter- or range-based approach.",
+    "Your read traffic is 100x your write traffic. Walk me through exactly what happens on a redirect, and where the cache sits.",
+    "How would you support custom aliases and link expiration?",
+    "A single link goes viral and receives 1M requests per second. What breaks first, and how do you handle it?",
+    "How would you add click analytics without slowing down the redirect path?"
+  ],
+  "interviewer": {
+    "approach": "Strong answers: clarify functional (shorten, redirect, optional custom alias, expiry, analytics) and non-functional requirements (low-latency redirects, high availability, read-heavy). Estimate scale. Define APIs (POST /urls, GET /{code} -> 301/302). Data model: code -> long URL, owner, created, expires. ID generation: base62 of a unique counter (distributed via ranges from a coordinator such as ZooKeeper or a DB sequence) or hashing with collision checks; 7 base62 characters ≈ 3.5 trillion codes. Storage: key-value store (DynamoDB/Cassandra) or sharded SQL. Cache hot codes (Redis) in front of the DB plus CDN at the edge. 301 vs 302 tradeoff (cacheability vs analytics). Analytics asynchronous via a queue/log (Kafka) into an OLAP store. Rate limiting and abuse prevention.",
+    "hints": [
+      "Before drawing boxes: what are the core operations, and what is the read/write ratio?",
+      "Try a quick estimate: how many new URLs per day, how much storage over 5 years, and how many redirects per second at peak?",
+      "How long does a short code need to be? How many codes can 7 base62 characters represent?",
+      "The redirect path is the hot path. What can you put in front of the database?"
+    ],
+    "pitfalls": [
+      "Jumping into components without clarifying requirements or scale.",
+      "Hashing the URL and truncating without handling collisions.",
+      "A single global counter that becomes a bottleneck or single point of failure.",
+      "Doing analytics writes synchronously on the redirect path.",
+      "Not discussing 301 vs 302."
+    ],
+    "facts": [
+      "100M new URLs per day.",
+      "Read:write ratio is about 100:1 (roughly 10B redirects per day).",
+      "URLs are kept for 5 years by default unless the user sets an expiration.",
+      "Redirect latency target: p99 under 50ms.",
+      "Short codes should be as short as reasonably possible and not trivially guessable in sequence (nice to have).",
+      "Custom aliases are a nice-to-have; analytics (click counts per link) is required but may lag by a few minutes."
+    ],
+    "deepDives": ["Unique ID generation at scale", "Cache strategy and eviction for hot links", "Database choice and sharding key", "Analytics pipeline"]
+  },
+  "resources": ["sdp-primer", "sdp-pastebin", "latency-numbers", "consistent-hashing", "ddia", "bytebytego", "hellointerview"]
+}

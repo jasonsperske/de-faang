@@ -1,0 +1,35 @@
+{
+  "id": "merge-intervals",
+  "title": "Merge Intervals",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 30,
+  "tags": ["arrays", "sorting", "intervals"],
+  "rubric": "coding",
+  "signature": {
+    "kind": "function",
+    "entry": { "python": "merge", "javascript": "merge", "typescript": "merge" },
+    "compare": "exact"
+  },
+  "followUps": [
+    "What is the time complexity, and which step dominates it?",
+    "How would you handle intervals arriving one at a time as a stream, where you must keep the merged set up to date?",
+    "How would you insert a single new interval into an already-merged, sorted list more efficiently than re-merging everything?",
+    "Do touching intervals like [1,4] and [4,5] merge in your solution? Where in the code is that decided, and how would you make it configurable?"
+  ],
+  "interviewer": {
+    "approach": "Sort by start, then sweep: if the current interval's start <= last merged end, extend last end = max(last end, current end); otherwise append. O(n log n) time, O(n) output space.",
+    "hints": [
+      "Would it help if the intervals were in some particular order?",
+      "After sorting by start, an interval can only overlap with the one you most recently merged. What do you compare?",
+      "When merging, remember the merged end is the max of both ends — one interval can fully contain the next."
+    ],
+    "pitfalls": [
+      "Setting end = current end instead of max(end, current end) (fails on containment like [1,10],[2,3]).",
+      "Treating touching intervals [1,4],[4,5] as non-overlapping.",
+      "Not sorting, or sorting by end instead of start.",
+      "Mutating the input in a way that affects the result."
+    ]
+  },
+  "resources": ["tih-interval", "tih-sorting", "big-o-cheatsheet", "tih-techniques"]
+}

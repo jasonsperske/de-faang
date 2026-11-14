@@ -1,0 +1,35 @@
+{
+  "id": "lru-cache",
+  "title": "LRU Cache",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 35,
+  "tags": ["design", "hash-map", "linked-list"],
+  "rubric": "coding",
+  "signature": {
+    "kind": "class",
+    "entry": { "python": "LRUCache", "javascript": "LRUCache", "typescript": "LRUCache" },
+    "compare": "exact"
+  },
+  "followUps": [
+    "Walk me through why each operation is O(1). Which data structure provides which guarantee?",
+    "How would you make this cache safe to use from multiple threads? What would the lock granularity be?",
+    "How would you add per-entry TTL (time-based expiry) on top of LRU eviction?",
+    "If this cache were distributed across several machines, how would you decide which node owns a key, and what happens when a node is added?"
+  ],
+  "interviewer": {
+    "approach": "Hash map from key to node in a doubly linked list ordered by recency (head = most recent). get: look up, move to head. put: update/insert at head, evict tail when over capacity. Both O(1). Languages with insertion-ordered maps (Python OrderedDict/dict, JS Map) allow a compact solution: delete and reinsert to refresh recency, and evict the first key. Accept either, but in strict settings ask whether they could implement it without the built-in ordered map.",
+    "hints": [
+      "You need O(1) lookup by key and O(1) tracking of usage order. Can a single structure do both, or do you need two?",
+      "A hash map gives fast lookup. What structure lets you move an arbitrary element to the front and remove from the back in O(1)?",
+      "Store doubly-linked-list nodes in the map. Sentinel head and tail nodes simplify the edge cases."
+    ],
+    "pitfalls": [
+      "Forgetting that get() also refreshes recency.",
+      "Updating an existing key without refreshing its recency, or evicting when updating an existing key.",
+      "Evicting the most recent instead of the least recent.",
+      "O(n) list scans (e.g. list.remove) that break the O(1) requirement."
+    ]
+  },
+  "resources": ["lru-wiki", "py-ordereddict", "tih-linked-list", "tih-hash-table", "consistent-hashing"]
+}
