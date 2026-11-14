@@ -2,6 +2,7 @@
   "name": "de-faang",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Local, LLM-powered mock interviews for FAANG-style coding and system design rounds.",
   "type": "module",
   "scripts": {

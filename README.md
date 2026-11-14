@@ -2,7 +2,7 @@
 
 Take the fear out of FAANG interviews. **de-faang** runs realistic coding and system design rounds on your own machine, with an LLM interviewer (Claude, Codex, Gemini, or Meta's Muse) that talks with you in real time, and a rubric-based evaluation afterward that links to resources for what to study next.
 
-**Contents:** [Features](#features) · [Questions](#questions) · [Rubrics](#rubrics) · [Quick start](#quick-start) · [How a round works](#how-a-round-works) · [Debrief and lessons](#debrief-and-lessons) · [Adding questions](#adding-questions) · [AI-assisted rounds](#ai-assisted-rounds) · [Multipart questions](#multipart-questions) · [Architecture](#architecture) · [Tests](#tests)
+**Contents:** [Features](#features) · [Questions](#questions) · [Rubrics](#rubrics) · [Quick start](#quick-start) · [How a round works](#how-a-round-works) · [Debrief and lessons](#debrief-and-lessons) · [Adding questions](#adding-questions) · [AI-assisted rounds](#ai-assisted-rounds) · [Multipart questions](#multipart-questions) · [Architecture](#architecture) · [Tests](#tests) · [Contributing](#contributing) · [License](#license)
 
 ## Features
 
@@ -251,3 +251,11 @@ npm test                                  # runner + multipart tests (local runn
 DEFAANG_TEST_RUNNER=docker npm test       # same tests through the Docker sandbox
 npm run typecheck
 ```
+
+## Contributing
+
+Contributions are welcome. `main` is protected, so every change goes through a pull request: fork the repo (or branch, if you have access), make your change, run `npm test`, `npm run typecheck` and `npm run validate`, and open a PR. If you add or edit a question, rubric or resource, run `npm run readmes` so the generated docs stay in sync.
+
+## License
+
+[MIT](LICENSE) © 2026 Jason Sperske
