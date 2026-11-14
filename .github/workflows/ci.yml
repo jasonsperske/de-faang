@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Hide Docker so the compiled-language tests skip; the sandbox job covers them.
+      DOCKER_HOST: unix:///nonexistent.sock
+      DEFAANG_TEST_RUNNER: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Validate questions
+        run: npm run validate
+      - name: Generated READMEs up to date
+        run: npm run readmes -- --check
+      - name: Tests (local runner)
+        run: npm test
+
+  sandbox:
+    name: sandbox
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEFAANG_TEST_RUNNER: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - name: Pull toolchain images
+        run: npm run docker:pull
+      - name: Tests (Docker sandbox, all languages)
+        run: npm test
