@@ -67,7 +67,7 @@ export const RUNTIMES: Record<Language, LangRuntime> = {
 };
 
 /** Images built locally rather than pulled: tag -> build context directory (relative to the repo root). */
-const LOCAL_IMAGES: Record<string, string> = { "defaang-go:1": "docker/go" };
+export const LOCAL_IMAGES: Record<string, string> = { "defaang-go:1": "docker/go" };
 
 export type RunnerMode = "docker" | "local";
 export const runnerMode = (): RunnerMode => (process.env.DEFAANG_RUNNER === "local" ? "local" : "docker");

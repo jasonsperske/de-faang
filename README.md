@@ -67,11 +67,21 @@ Rounds are graded against weighted rubrics: each dimension gets a 1–4 score wi
 ## Quick start
 
 ```bash
+npm run doctor                # check Node, Docker, toolchain images, API keys and ports
 npm install
 cp .env.example .env          # add at least one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, META_API_KEY
 npm run docker:pull           # pre-fetch every language's toolchain image, ~5 GB (otherwise fetched on first use)
 npm run dev                   # API on :4317, UI on http://localhost:5173
 ```
+
+`npm run doctor` runs without `npm install` and can be re-run any time; it reports each problem with the command that fixes it, and exits non-zero if something is broken. It checks:
+
+- Node version and installed npm packages.
+- `.env` and which LLM providers have keys (values are never printed).
+- Docker CLI, daemon access, each language's image, and disk space for missing images.
+- A sandboxed test container started with the runner's isolation flags (skip with `npm run doctor -- --quick`).
+- With `DEFAANG_RUNNER=local`: the host toolchains (`python3`, `node`, `gcc`, `g++`, `go`, `rustc`, `javac`).
+- Whether the app's ports are free, or de-faang is already running on them.
 
 Or run a single production server with `npm start`, which builds the UI and serves it at http://localhost:4317.
 
