@@ -1,0 +1,90 @@
+{
+  "id": "debugging",
+  "name": "Debugging interview rubric",
+  "scale": {
+    "1": "Strong concern: significant gaps; would not pass this dimension at the target level.",
+    "2": "Below bar: partially demonstrated, needed substantial help, or had notable errors.",
+    "3": "At bar: solid, with minor gaps; meets FAANG mid/senior expectations.",
+    "4": "Above bar: exceptional, independent, insightful, and polished."
+  },
+  "dimensions": [
+    {
+      "id": "reproduction",
+      "name": "Reproducing & scoping the bug",
+      "weight": 0.15,
+      "signals": "Read the bug report closely; reproduced the symptom in the running app before changing code; turned the report into concrete expected vs. actual values (e.g. 'Acme should show 3 orders and $599.85'); checked whether the bug affects one row or many, and which columns.",
+      "levels": {
+        "1": "Started editing code without reproducing the bug or stating what correct looks like.",
+        "2": "Reproduced the symptom only partially, or never pinned down the expected values.",
+        "3": "Reproduced the bug, stated expected vs. actual, and scoped which rows and columns are wrong.",
+        "4": "Quickly built a precise picture of the failure (all the symptoms, which data triggers them) that guided the rest of the round."
+      },
+      "resources": ["debugging-rules", "jvns-debugging-manifesto"]
+    },
+    {
+      "id": "investigation",
+      "name": "Investigation & navigating unfamiliar code",
+      "weight": 0.2,
+      "signals": "Worked out how the app fits together without a diagram: traced the data from the table component through the API call and route to the query; used the browser, the terminal and the database (queries, logs, API responses) to look at real data at each layer; narrowed down the faulty layer with evidence instead of reading every file or guessing.",
+      "levels": {
+        "1": "Wandered through files or changed code at random; never located where the wrong values come from.",
+        "2": "Found the right area only with significant hints, or by reading code without checking data.",
+        "3": "Traced the data path layer by layer and used real data (API responses, SQL queries) to find the faulty layer.",
+        "4": "Bisected the system efficiently (e.g. compared the API response with a direct query of the base tables) and explained the architecture they had discovered."
+      },
+      "resources": ["jvns-debugging-manifesto", "react-devtools", "sqlite-select"]
+    },
+    {
+      "id": "root_cause",
+      "name": "Root-cause analysis",
+      "weight": 0.25,
+      "signals": "Formed explicit hypotheses and tested them; explained the mechanism of each defect (why the counts multiply, why the cents disappear, why some values are empty), not just where it is; found every independent cause behind the symptoms; distinguished causes from symptoms.",
+      "levels": {
+        "1": "Did not find the cause, or 'fixed' a symptom (UI formatting, a special case) without understanding why it happened.",
+        "2": "Found one cause but missed others, or couldn't explain the mechanism.",
+        "3": "Found every cause and explained each mechanism correctly.",
+        "4": "Explained each mechanism precisely with evidence, and generalised it (where else the same mistake could hide, how to spot it in review)."
+      },
+      "resources": ["sqlite-aggregates", "sqlite-expressions", "sqlite-select"]
+    },
+    {
+      "id": "fix_quality",
+      "name": "Fix correctness & quality",
+      "weight": 0.2,
+      "signals": "The fix addresses the cause in the right layer, keeps the API's contract, handles edge cases (customers without orders or refunds, voided orders, duplicate amounts), and keeps sorting and search working. Hidden checks are ground truth. The change is minimal, readable, and explained.",
+      "levels": {
+        "1": "No working fix, or a fix that breaks other behaviour.",
+        "2": "Fixes the reported rows but fails edge cases or changes the API's contract.",
+        "3": "A correct, minimal fix in the right layer that passes the hidden checks.",
+        "4": "A clean, well-explained fix that is robust to edge cases, plus sensible notes on follow-up hardening."
+      },
+      "resources": ["sqlite-aggregates", "sqlite-select"]
+    },
+    {
+      "id": "verification",
+      "name": "Verification & testing",
+      "weight": 0.1,
+      "signals": "Confirmed the fix against the values in the bug report and against independent data (e.g. a direct query of the base tables); checked edge cases and that nothing else regressed (other columns, sorting, search); suggested a test that would have caught the bug.",
+      "levels": {
+        "1": "Declared victory without checking.",
+        "2": "Checked only the one row from the bug report.",
+        "3": "Verified the reported values, a couple of edge cases, and the rest of the table.",
+        "4": "Verified systematically, and proposed a regression test or monitoring that would catch this class of bug."
+      },
+      "resources": ["debugging-rules"]
+    },
+    {
+      "id": "communication",
+      "name": "Communication",
+      "weight": 0.1,
+      "signals": "Narrated hypotheses and what each step was meant to show; kept the interviewer oriented while exploring; explained the root cause and the fix clearly, as they would to the person who filed the bug.",
+      "levels": {
+        "1": "Silent or incoherent; the interviewer could not follow the investigation.",
+        "2": "Explained some steps, but often went quiet or was hard to follow.",
+        "3": "Clear narration of hypotheses, findings and the fix.",
+        "4": "Exceptionally clear: structured, concise, and pitched for both engineers and the bug reporter."
+      },
+      "resources": ["tih-techniques"]
+    }
+  ]
+}

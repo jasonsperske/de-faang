@@ -2,15 +2,16 @@
 
 [![CI](https://github.com/jasonsperske/de-faang/actions/workflows/ci.yml/badge.svg)](https://github.com/jasonsperske/de-faang/actions/workflows/ci.yml)
 
-Take the fear out of FAANG interviews. **de-faang** runs realistic coding and system design rounds on your own machine, with an LLM interviewer (Claude, Codex, Gemini, or Meta's Muse) that talks with you in real time, and a rubric-based evaluation afterward that links to resources for what to study next.
+Take the fear out of FAANG interviews. **de-faang** runs realistic coding, debugging and system design rounds on your own machine, with an LLM interviewer (Claude, Codex, Gemini, or Meta's Muse) that talks with you in real time, and a rubric-based evaluation afterward that links to resources for what to study next.
 
-**Contents:** [Features](#features) · [Questions](#questions) · [Rubrics](#rubrics) · [Quick start](#quick-start) · [How a round works](#how-a-round-works) · [Debrief and lessons](#debrief-and-lessons) · [Adding questions](#adding-questions) · [AI-assisted rounds](#ai-assisted-rounds) · [Multipart questions](#multipart-questions) · [Architecture](#architecture) · [Tests](#tests) · [Contributing](#contributing) · [License](#license)
+**Contents:** [Features](#features) · [Questions](#questions) · [Rubrics](#rubrics) · [Quick start](#quick-start) · [How a round works](#how-a-round-works) · [Debrief and lessons](#debrief-and-lessons) · [Adding questions](#adding-questions) · [AI-assisted rounds](#ai-assisted-rounds) · [Multipart questions](#multipart-questions) · [Debugging questions](#debugging-questions) · [Architecture](#architecture) · [Tests](#tests) · [Contributing](#contributing) · [License](#license)
 
 ## Features
 
 ### The interview room
 
 - **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, TypeScript, Java, C++, C, Go, or Rust; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
+- **Debugging rounds.** A bug report and a real app to fix: a project browser in the prompt panel, a multi-file editor with hot reloading, the running app in a preview, its logs, and a terminal. There's no architecture overview, so finding your way around is part of the round. See [Debugging questions](#debugging-questions).
 - **System design whiteboard.** Excalidraw canvas plus a markdown notes pad. The interviewer "sees" your diagram as a text summary on every turn, and the evaluator gets the PNG.
 - **Live interviewer chat.** Think out loud; every message carries a snapshot of your code (or notes and diagram) and recent test runs, so the interviewer reacts to what you're actually doing.
 
@@ -53,6 +54,7 @@ Each question links to its README, which covers the prompt, how the round is gra
 | [Apply & Rebase Writing Suggestions](questions/coding/writing-suggestions/README.md) | Coding | Medium | 45 min | `strings` `intervals` `simulation` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | 2-part, AI-assisted option |
 | [Monorepo Build Order & Affected Packages](questions/coding/monorepo-build-order/README.md) | Coding | Medium | 45 min | `graphs` `topological-sort` `heap` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | 2-part, AI-assisted option |
 | [Rules Expression Evaluator](questions/coding/rules-expression-evaluator/README.md) | Coding | Hard | 45 min | `parsing` `stack` `recursion` `strings` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | AI-assisted option |
+| [Wrong Revenue in the Accounts Table](questions/debugging/account-revenue-table/README.md) | Debugging | Medium | 45 min | `react` `sql` `sqlite` `joins` `aggregation` | [debugging](rubrics/README.md#debugging) + [ai-coding](rubrics/README.md#ai-coding) | Runs the app, with a terminal, AI-assisted option |
 | [Design a Distributed Rate Limiter](questions/system-design/rate-limiter/README.md) | System design | Medium | 45 min | `distributed-systems` `algorithms` `redis` | [system-design](rubrics/README.md#system-design) | — |
 | [Design a Media Upload and Transcoding Pipeline](questions/system-design/media-upload-pipeline/README.md) | System design | Medium | 45 min | `storage` `queues` `workflows` `cdn` | [system-design](rubrics/README.md#system-design) | — |
 | [Design a URL Shortener](questions/system-design/url-shortener/README.md) | System design | Medium | 45 min | `storage` `caching` `id-generation` | [system-design](rubrics/README.md#system-design) | — |
@@ -72,7 +74,8 @@ Rounds are graded against weighted rubrics: each dimension gets a 1–4 score wi
 | Rubric | Used for | Dimensions |
 |---|---|---|
 | [coding](rubrics/README.md#coding) | Coding rounds | Problem understanding & approach (25%), Algorithms & complexity (20%), Coding & correctness (25%), Testing & debugging (15%), Communication (15%) |
-| [ai-coding](rubrics/README.md#ai-coding) | AI-assisted coding rounds | Problem understanding & framing (15%), Directing the AI (20%), Verifying AI output (25%), Understanding & ownership (15%), Final correctness & code quality (15%), Communication (10%), plus each question's own dimension |
+| [ai-coding](rubrics/README.md#ai-coding) | AI-assisted coding rounds, AI-assisted debugging rounds | Problem understanding & framing (15%), Directing the AI (20%), Verifying AI output (25%), Understanding & ownership (15%), Final correctness & code quality (15%), Communication (10%), plus each question's own dimension |
+| [debugging](rubrics/README.md#debugging) | Debugging rounds | Reproducing & scoping the bug (15%), Investigation & navigating unfamiliar code (20%), Root-cause analysis (25%), Fix correctness & quality (20%), Verification & testing (10%), Communication (10%) |
 | [system-design](rubrics/README.md#system-design) | System design rounds | Requirements & scoping (20%), High-level design (25%), Deep dive & technical depth (25%), Scalability, reliability & tradeoffs (20%), Communication & leadership (10%) |
 <!-- rubrics:end -->
 
@@ -115,7 +118,7 @@ To click through the UI without API keys or token spend, set `DEFAANG_MOCK_LLM=1
 
 ## How a round works
 
-1. **Pick a question** and choose interviewer, strictness, verbosity, and language. Coding questions can also be **AI-assisted** (see below). This creates `sessions/<date>_<time>_<question>_<id>/`.
+1. **Pick a question** and choose interviewer, strictness, verbosity, and language. Coding and debugging questions can also be **AI-assisted** (see below). This creates `sessions/<date>_<time>_<question>_<id>/`.
 2. **Interview.** The interviewer opens the round. Think out loud in the chat; each message carries a snapshot of your code (or notes and diagram) plus recent test runs. **Run** executes the sample tests and your custom inputs.
 3. **Submit.** Coding runs the public and hidden tests; design exports the whiteboard. Your work freezes into `evidence/`.
 4. **Follow-ups.** Answer the question's follow-up prompts. They autosave to `evidence/followups.md`.
@@ -127,7 +130,8 @@ sessions/2026-11-14_0341_two-sum_d70a/
 ├── prompt.md
 ├── transcript.jsonl      interviewer chat
 ├── ai-log.jsonl          AI-assisted rounds: assistant prompts, replies, inserts/copies/pastes
-├── workspace/            live autosave (solution.py, design.md, design.excalidraw, design.png)
+├── activity.jsonl        debugging rounds: files opened and terminal commands
+├── workspace/            live autosave (solution.py, design.md, design.excalidraw, design.png; project/ for debugging rounds)
 ├── runs/                 run-001.json … submit.json
 ├── evidence/             submission, test-results.json, run-history.md, transcript.md, followups.md, packet.md
 ├── evaluation.json
@@ -161,6 +165,13 @@ questions/coding/<id>/
 questions/system-design/<id>/
   question.json      includes interviewer.facts (revealed only when asked) and deepDives
   prompt.md
+
+questions/debugging/<id>/
+  question.json      metadata, app.command (the dev server), follow-ups, interviewer notes, resources, ai section
+  prompt.md          the bug report the candidate sees (no architecture overview)
+  project/           the app with the bug; each round gets its own copy
+  checks/run.mjs     grades a copy of the candidate's project (public checks, and hidden ones on submit)
+  solution/          the fixed files, laid out like project/ (used by npm run validate)
 ```
 
 Then run `npm run readmes` to generate the question's `README.md` and its row in the [question table](#questions). Re-run it whenever you change a question, rubric, or resource; `npm run readmes -- --check` fails if any generated file is out of date.
@@ -176,7 +187,7 @@ Then run `npm run readmes` to generate the question's `README.md` and its row in
 
 ## AI-assisted rounds
 
-Choose **AI-assisted** in the setup dialog of any coding question. The console under the editor gains an **✦ AI assistant** tab, next to Results and Custom input. It uses the same LLM provider as the interviewer.
+Choose **AI-assisted** in the setup dialog of any coding or debugging question. The console under the editor gains an **✦ AI assistant** tab, next to Results and Custom input. It uses the same LLM provider as the interviewer.
 
 - **Asking:** each message can attach the problem statement and/or your current code (both on by default). **New chat** clears the assistant's memory of the conversation.
 - **Using replies:** code blocks have **Insert** (at the cursor), **Replace editor**, and **Copy** buttons.
@@ -235,6 +246,22 @@ During a round:
 
 Limitation: Go class questions use LeetCode's `Constructor` name, so two parts that are *different* Go classes would clash. A later part that extends the same class works.
 
+## Debugging questions
+
+A debugging round hands you a bug report and a copy of a working app with a bug in it. You reproduce the bug, find the cause, fix it, and show that it's fixed, while you talk the interviewer through it.
+
+- **Files:** the prompt panel has a **Files** tab, a project browser. Click a file to open it in the editor; open files get tabs above the editor. You can create and delete files too.
+- **Editor:** every file autosaves shortly after you type. The app runs with hot reloading, so the preview updates as you save (server files restart the API and reload the page).
+- **Console** (the panel under the editor): **Preview** shows the running app (or open it in a browser tab); **Terminal** runs commands from the project root, such as `npm run db:query "SELECT ..."`; **Logs** shows the dev server's output; **Checks** shows check results.
+- **Run checks** (standard and coach modes) runs the question's sample checks against your copy of the project. **Submit** runs every check, including hidden ones on data you haven't seen, and freezes your changes into `evidence/changes.diff`.
+- **No system diagram:** the prompt describes the symptoms, not the code. Working out how the app fits together, on your own or with the AI assistant in an AI-assisted round, is part of what's assessed.
+- **What's recorded:** the files you open and the commands you run (with their output) go to `activity.jsonl`. The interviewer sees your recent activity and your changes as a diff; the evaluator gets the whole timeline and grades with the [debugging rubric](rubrics/README.md#debugging): reproducing, investigating, root cause, the fix, verification, and communication.
+- **AI-assisted rounds:** the assistant sees only what you send it: the bug report and, if you attach it, the file you have open. It never sees the rest of the project.
+
+**Where the app runs.** With the Docker runner, each round's app runs in its own container from the `defaang-node-dev:1` image (`docker/node-dev/`: Node 22 with the projects' npm dependencies preinstalled, plus `sqlite3` and `curl`), with the round's `workspace/project/` folder mounted at `/app`. The image is built on first use (or by `npm run docker:pull`). The container publishes the dev server on `127.0.0.1` only, drops all capabilities, runs as your user, and has memory, CPU and process limits. Unlike the code sandbox it has a network, because it must publish a port. Terminal commands run inside it, can't read keyboard input, and time out after 2 minutes. With `DEFAANG_RUNNER=local` the app and the terminal run directly on your machine (Node 22.13 or newer for `node:sqlite`), using de-faang's own `node_modules`. Checks always run in the network-less sandbox (Docker runner) on a copy of the project.
+
+**Writing one.** Copy `questions/debugging/account-revenue-table/`. `checks/run.mjs` gets `--project <dir> --suite public|all` and prints one line, `@@DEFAANG_CHECKS@@` followed by a JSON array of `{ name, kind: "public" | "hidden", args, expected, output, passed, error? }`. Make the checks black-box (for example, start the app's API and call it) so any reasonable fix passes, and compute expected values independently of the code under test. `npm run validate` checks that the public checks fail on `project/` and that every check passes with `solution/` copied over it. Dependencies the project needs must be in `docker/node-dev/package.json` and in de-faang's own `package.json`.
+
 ## Architecture
 
 ```
@@ -247,6 +274,8 @@ server/   Fastify API
   interviewer.ts  persona and strictness prompts, workspace snapshots
   assistant.ts    AI assistant: helpfulness policies, request composition, usage analysis
   debrief.ts      post-round debrief chat and lesson generation/storage
+  debug/          debugging rounds: the project copy, file API and diff (project.ts), the dev server and
+                terminal in Docker or locally (app.ts), and the checks sandbox (checks.ts)
   evaluator.ts    packet assembly, rubric scoring, report rendering
   sessions.ts     session-folder storage
 shared/   types shared by the server and the UI

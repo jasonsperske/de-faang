@@ -4,7 +4,8 @@ import { LANGUAGES } from "../../../shared/types";
 import { api } from "../lib/api";
 import { DECISION_LABEL, STRICTNESS, VERBOSITY } from "../lib/format";
 
-type Filter = "all" | "coding" | "system-design";
+type Filter = "all" | "coding" | "debugging" | "system-design";
+const TYPE_LABEL = { coding: "Coding", debugging: "Debugging", "system-design": "System design" } as const;
 
 export function Home() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -57,9 +58,9 @@ export function Home() {
         <div className="section-head">
           <h2>Question library</h2>
           <div className="seg">
-            {(["all", "coding", "system-design"] as Filter[]).map((f) => (
+            {(["all", "coding", "debugging", "system-design"] as Filter[]).map((f) => (
               <button key={f} className={filter === f ? "on" : ""} onClick={() => setFilter(f)}>
-                {f === "all" ? "All" : f === "coding" ? "Coding" : "System design"}
+                {f === "all" ? "All" : TYPE_LABEL[f]}
               </button>
             ))}
           </div>
@@ -68,7 +69,7 @@ export function Home() {
           {shown.map((q) => (
             <button key={q.id} className="card" onClick={() => setPicked(q)} disabled={!!noProvider}>
               <div className="card-top">
-                <span className={`pill ${q.type}`}>{q.type === "coding" ? "Coding" : "System design"}</span>
+                <span className={`pill ${q.type}`}>{TYPE_LABEL[q.type]}</span>
                 <span className={`diff ${q.difficulty}`}>{q.difficulty}</span>
               </div>
               <h3>{q.title}</h3>
@@ -178,7 +179,8 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
   const edited = policy !== undefined && prompt.trim() !== policy.prompt.trim();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ai = q.type === "coding" && format === "ai";
+  const canAi = q.type === "coding" || q.type === "debugging";
+  const ai = canAi && format === "ai";
 
   const start = async () => {
     setBusy(true);
@@ -189,7 +191,7 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
         strictness,
         verbosity,
         language: q.type === "coding" ? language : undefined,
-        format: q.type === "coding" ? format : undefined,
+        format: canAi ? format : undefined,
         aiPolicy: ai ? policyId : undefined,
         aiSystemPrompt: ai ? prompt : undefined,
       });
@@ -206,10 +208,17 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>{q.title}</h2>
         <p className="muted">
-          {q.type === "coding" ? "Coding" : "System design"} · {q.difficulty} · about {q.durationMinutes} minutes{q.parts ? ` · ${q.parts} parts, revealed one at a time` : ""}
+          {TYPE_LABEL[q.type]} · {q.difficulty} · about {q.durationMinutes} minutes{q.parts ? ` · ${q.parts} parts, revealed one at a time` : ""}
         </p>
 
-        {q.type === "coding" && (
+        {q.type === "debugging" && (
+          <p className="small muted">
+            You'll get a bug report and a running app to debug: a project browser, an editor with hot reloading, the app's preview, and a terminal.
+            {config.runner === "docker" ? " The app runs in Docker; its image is built the first time, which takes a few minutes." : " The app runs on this machine (local runner)."}
+          </p>
+        )}
+
+        {canAi && (
           <>
             <label className="field-label">Format</label>
             <div className="options">
@@ -217,14 +226,16 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
                 <input type="radio" name="format" checked={format === "classic"} onChange={() => setFormat("classic")} />
                 <div>
                   <strong>Classic</strong>
-                  <div className="muted small">Just you, the editor, and the interviewer.</div>
+                  <div className="muted small">{q.type === "debugging" ? "Just you, the project, and the interviewer." : "Just you, the editor, and the interviewer."}</div>
                 </div>
               </label>
               <label className={`option ${format === "ai" ? "on" : ""}`}>
                 <input type="radio" name="format" checked={format === "ai"} onChange={() => setFormat("ai")} />
                 <div>
                   <strong>✦ AI-assisted</strong>
-                  <div className="muted small">You get an AI assistant. Graded on how you direct it and check its work.</div>
+                  <div className="muted small">
+                    You get an AI assistant{q.type === "debugging" ? " that sees only what you show it" : ""}. Graded on how you direct it and check its work.
+                  </div>
                 </div>
               </label>
             </div>

@@ -28,7 +28,9 @@ export const TOOLCHAINS = {
   java: { image: "eclipse-temurin:25-jdk", local: [["javac", "-version"], ["java", "-version"], ["timeout", "--version"]] },
 };
 /** Images built from this repo instead of pulled. */
-export const LOCAL_IMAGES = { "defaang-go:1": "docker/go" };
+export const LOCAL_IMAGES = { "defaang-go:1": "docker/go", "defaang-node-dev:1": "docker/node-dev" };
+/** Debugging questions run their app in this image (must match server/debug/app.ts). */
+export const DEV_IMAGE = "defaang-node-dev:1";
 const CORE = ["python", "javascript", "typescript"];
 
 // ------------------------------------------------------------------------------- output
@@ -93,7 +95,7 @@ function checkNode() {
   const want = (pkg.engines?.node ?? ">=22.6").replace(/^>=\s*/, "");
   const have = process.versions.node;
   if (versionAtLeast(have, want)) report("ok", `Node ${have}`, `needs ${want} or newer`);
-  else report("fail", `Node ${have} is too old`, `needs ${want} or newer (TypeScript type stripping)`, "Install Node 22 LTS or newer, e.g. with nvm: nvm install 22");
+  else report("fail", `Node ${have} is too old`, `needs ${want} or newer (TypeScript type stripping, and node:sqlite for debugging questions)`, "Install Node 22 LTS or newer, e.g. with nvm: nvm install 22");
 
   const missing = ["fastify", "tsx", "vite", "react", "@anthropic-ai/sdk"].filter((p) => !fs.existsSync(path.join(ROOT, "node_modules", p, "package.json")));
   if (!fs.existsSync(path.join(ROOT, "node_modules"))) report("fail", "npm packages not installed", undefined, "npm install");
@@ -169,6 +171,12 @@ async function checkDocker(quick) {
     if (present[img]) report("ok", `${img}`, langs.join(", "));
     else if (core) report("fail", `${img} not downloaded`, `${langs.join(", ")}; the app pulls it on start, but nothing runs until it's there`, `${fix}  (or npm run docker:pull for everything)`);
     else report("warn", `${img} not downloaded`, `${langs.join(", ")} unavailable until it's fetched (the app does this in the background)`, `${fix}  (or npm run docker:pull for everything)`);
+  }
+  const dev = await run("docker", ["image", "inspect", "--format", "{{.Size}}", DEV_IMAGE]);
+  if (dev.ok) report("ok", DEV_IMAGE, "debugging questions (the app under test)");
+  else {
+    missingBytes += 0.4e9;
+    report("warn", `${DEV_IMAGE} not built`, "debugging questions build it on first use, which takes a few minutes", `docker build -t ${DEV_IMAGE} ${LOCAL_IMAGES[DEV_IMAGE]}  (or npm run docker:pull for everything)`);
   }
 
   if (missingBytes > 0 && rootDir && fs.statfsSync) {
