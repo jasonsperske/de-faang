@@ -2,20 +2,67 @@
 
 Take the fear out of FAANG interviews. **de-faang** runs realistic coding and system design rounds on your own machine, with an LLM interviewer (Claude, Codex, Gemini, or Meta's Muse) that talks with you in real time, and a rubric-based evaluation afterward that links to resources for what to study next.
 
+**Contents:** [Features](#features) · [Questions](#questions) · [Rubrics](#rubrics) · [Quick start](#quick-start) · [How a round works](#how-a-round-works) · [Debrief and lessons](#debrief-and-lessons) · [Adding questions](#adding-questions) · [AI-assisted rounds](#ai-assisted-rounds) · [Multipart questions](#multipart-questions) · [Architecture](#architecture) · [Tests](#tests)
+
+## Features
+
+### The interview room
+
 - **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, TypeScript, Java, C++, C, Go, or Rust; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
 - **System design whiteboard.** Excalidraw canvas plus a markdown notes pad. The interviewer "sees" your diagram as a text summary on every turn, and the evaluator gets the PNG.
-- **Configurable interviewer**
-  - **Strict:** the prompt only. No sample tests, no hints, neutral tone. Hidden test details stay hidden until the evaluation.
-  - **Standard:** sample tests visible, expected output for your custom inputs, and hints only when you ask.
-  - **Coach:** proactive hints, reactions to every test run, and coaching on interview technique.
-  - **Verbosity:** terse, normal, or detailed (for both the chat and the report).
+- **Live interviewer chat.** Think out loud; every message carries a snapshot of your code (or notes and diagram) and recent test runs, so the interviewer reacts to what you're actually doing.
+
+### A configurable interviewer
+
+- **Strict:** the prompt only. No sample tests, no hints, neutral tone. Hidden test details stay hidden until the evaluation.
+- **Standard:** sample tests visible, expected output for your custom inputs, and hints only when you ask.
+- **Coach:** proactive hints, reactions to every test run, and coaching on interview technique.
+- **Verbosity:** terse, normal, or detailed (for both the chat and the report).
+- **Your choice of model:** Claude, Codex, Gemini, or Muse, or an offline mock for trying the UI.
+
+### Round formats
+
 - **Multipart questions.** Later parts are revealed only when you hand in the current one, like a real round where the interviewer says "now let's extend this". Your code carries over between parts.
 - **AI-assisted rounds.** An AI assistant in the console analyses, explains, reviews or writes code, with a configurable helpfulness level. Every prompt, what you attached, the replies, and what you inserted, copied or pasted is recorded and graded with an AI-specific rubric.
 - **Follow-up questions** after you submit, answered in writing.
-- **Debrief & lessons.** After the evaluation, talk the round over with a coach that has seen everything, then turn it into a personalised lesson with practice exercises.
+
+### Feedback
+
 - **Evaluation packet → rubric scorecard.** Per-dimension 1–4 scores with quoted evidence, a hire/no-hire signal, strengths, improvements, a model answer sketch, and curated resource links.
+- **Debrief & lessons.** After the evaluation, talk the round over with a coach that has seen everything, then turn it into a personalised lesson with practice exercises.
+- **No hallucinated links.** Study links come only from a curated [resource library](resources/resources.json).
 
 Every round lives in its own folder under `sessions/`, which git ignores, so your repo stays clean.
+
+## Questions
+
+Each question links to its README, which covers the prompt, how the round is graded (rubric dimensions, weights, and study links for each), the reference approach and common pitfalls (hidden behind a spoiler), the written follow-ups, and further reading.
+
+<!-- questions:start -->
+| Question | Type | Difficulty | Time | Topics | Rubric | Notes |
+|---|---|---|---|---|---|---|
+| [Two Sum](questions/coding/two-sum/README.md) | Coding | Easy | 20 min | `arrays` `hash-map` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | AI-assisted option |
+| [Merge Intervals](questions/coding/merge-intervals/README.md) | Coding | Medium | 30 min | `arrays` `sorting` `intervals` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | AI-assisted option |
+| [Top K Frequent Elements](questions/coding/top-k-frequent/README.md) | Coding | Medium | 30 min | `hash-map` `heap` `bucket-sort` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | AI-assisted option |
+| [LRU Cache](questions/coding/lru-cache/README.md) | Coding | Medium | 35 min | `design` `hash-map` `linked-list` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | AI-assisted option |
+| [Anagram Pairs & Compound Words](questions/coding/anagram-pairs-and-compound-words/README.md) | Coding | Medium | 45 min | `strings` `hash-map` `dynamic-programming` | [coding](rubrics/README.md#coding) + [ai-coding](rubrics/README.md#ai-coding) | 2-part, AI-assisted option |
+| [Design a Distributed Rate Limiter](questions/system-design/rate-limiter/README.md) | System design | Medium | 45 min | `distributed-systems` `algorithms` `redis` | [system-design](rubrics/README.md#system-design) | — |
+| [Design a URL Shortener](questions/system-design/url-shortener/README.md) | System design | Medium | 45 min | `storage` `caching` `id-generation` | [system-design](rubrics/README.md#system-design) | — |
+| [Design an Airline Booking API for Travel Agencies](questions/system-design/airline-agency-booking-api/README.md) | System design | Hard | 45 min | `api-design` `idempotency` `transactions` `sagas` | [system-design](rubrics/README.md#system-design) | — |
+| [Design r/place with Multiple Canvases](questions/system-design/collaborative-canvas/README.md) | System design | Hard | 45 min | `real-time` `websockets` `fan-out` `abuse-prevention` | [system-design](rubrics/README.md#system-design) | — |
+<!-- questions:end -->
+
+## Rubrics
+
+Rounds are graded against weighted rubrics: each dimension gets a 1–4 score with quoted evidence, and the server computes the weighted score and hire signal. The [rubric guide](rubrics/README.md) lists every dimension's weight, what the evaluator looks for, the level descriptors, and study links, plus background reading on how FAANG interview scorecards work.
+
+<!-- rubrics:start -->
+| Rubric | Used for | Dimensions |
+|---|---|---|
+| [coding](rubrics/README.md#coding) | Coding rounds | Problem understanding & approach (25%), Algorithms & complexity (20%), Coding & correctness (25%), Testing & debugging (15%), Communication (15%) |
+| [ai-coding](rubrics/README.md#ai-coding) | AI-assisted coding rounds | Problem understanding & framing (15%), Directing the AI (20%), Verifying AI output (25%), Understanding & ownership (15%), Final correctness & code quality (15%), Communication (10%), plus each question's own dimension |
+| [system-design](rubrics/README.md#system-design) | System design rounds | Requirements & scoping (20%), High-level design (25%), Deep dive & technical depth (25%), Scalability, reliability & tradeoffs (20%), Communication & leadership (10%) |
+<!-- rubrics:end -->
 
 ## Quick start
 
@@ -93,6 +140,8 @@ questions/system-design/<id>/
   question.json      includes interviewer.facts (revealed only when asked) and deepDives
   prompt.md
 ```
+
+Then run `npm run readmes` to generate the question's `README.md` and its row in the [question table](#questions). Re-run it whenever you change a question, rubric, or resource; `npm run readmes -- --check` fails if any generated file is out of date.
 
 - **Function questions:** each test is `{ "args": [arg1, arg2], "expected": ... }`. Entry-point names can differ per language (`two_sum` vs `twoSum`).
 - **Class questions** (e.g. LRU cache) use the LeetCode convention: `{ "ops": ["LRUCache", "put", "get"], "args": [[2], [1, 1], [1]], "expected": [null, null, 1] }`.
@@ -188,7 +237,7 @@ Claude requests enable server-side refusal fallbacks (`fallbacks: "default"`), s
 ## Tests
 
 ```bash
-npm test                                  # runner + multipart tests (local runner) + compiled-language tests (Docker; skipped without it)
+npm test                                  # runner + multipart tests (local runner) + compiled-language tests (Docker; skipped without it) + generated READMEs up to date
 DEFAANG_TEST_RUNNER=docker npm test       # same tests through the Docker sandbox
 npm run typecheck
 ```
