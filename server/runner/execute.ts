@@ -67,7 +67,7 @@ export const RUNTIMES: Record<Language, LangRuntime> = {
 };
 
 /** Images built locally rather than pulled: tag -> build context directory (relative to the repo root). */
-export const LOCAL_IMAGES: Record<string, string> = { "defaang-go:1": "docker/go" };
+export const LOCAL_IMAGES: Record<string, string> = { "defaang-go:1": "docker/go", "defaang-node-dev:1": "docker/node-dev" };
 
 export type RunnerMode = "docker" | "local";
 export const runnerMode = (): RunnerMode => (process.env.DEFAANG_RUNNER === "local" ? "local" : "docker");
@@ -198,11 +198,15 @@ export async function checkRunner(): Promise<RunnerStatus> {
 
 /** Fails fast with a helpful message when a language's image isn't available yet. */
 export async function ensureRuntime(lang: Language): Promise<string | undefined> {
+  return ensureImage(RUNTIMES[lang].image, `The ${lang} toolchain`);
+}
+
+/** Docker runner: undefined when the image is present; otherwise starts fetching (or building) it and says so. */
+export async function ensureImage(img: string, what = "The image"): Promise<string | undefined> {
   if (runnerMode() === "local") return undefined;
-  const img = RUNTIMES[lang].image;
   if (await imageExists(img)) return undefined;
   fetchImage(img);
-  return `The ${lang} toolchain (${img}) is still downloading in the background (first use only). Try again in a minute or two.`;
+  return `${what} (${img}) is still ${LOCAL_IMAGES[img] ? "being built" : "downloading"} in the background (first use only). Try again in a minute or two.`;
 }
 
 async function imageExists(img: string): Promise<boolean> {

@@ -1,4 +1,7 @@
 import type {
+  ActivityEntry,
+  AppStatus,
+  ProjectFile,
   DebriefEntry,
   LessonMeta,
   AiLogEntry,
@@ -38,7 +41,16 @@ export const api = {
   saveWorkspace: (id: string, ws: Workspace) => req<{ ok: true }>("PUT", `/api/sessions/${id}/workspace`, ws),
   run: (id: string, body: { language: Language; code: string; includePublic: boolean; custom: TestCase[] }) =>
     req<{ result: RunResult; run: number; summary: string }>("POST", `/api/sessions/${id}/run`, body),
-  submit: (id: string, ws: Workspace) => req<SessionView>("POST", `/api/sessions/${id}/submit`, ws),
+  /** Debugging rounds pass no workspace: their files are saved as they're edited. */
+  submit: (id: string, ws?: Workspace) => req<SessionView>("POST", `/api/sessions/${id}/submit`, ws ?? {}),
+  files: (id: string) => req<{ files: ProjectFile[] }>("GET", `/api/sessions/${id}/files`),
+  readFile: (id: string, path: string, open = false) =>
+    req<{ path: string; content: string }>("GET", `/api/sessions/${id}/file?${new URLSearchParams({ path, ...(open ? { open: "1" } : {}) })}`),
+  writeFile: (id: string, path: string, content: string, create = false) => req<{ ok: true }>("PUT", `/api/sessions/${id}/file`, { path, content, create }),
+  deleteFile: (id: string, path: string) => req<{ ok: true }>("DELETE", `/api/sessions/${id}/file?${new URLSearchParams({ path })}`),
+  appStatus: (id: string) => req<AppStatus>("GET", `/api/sessions/${id}/app`),
+  app: (id: string, action: "start" | "restart" | "stop") => req<AppStatus>("POST", `/api/sessions/${id}/app`, { action }),
+  checks: (id: string) => req<{ result: RunResult; run: number; summary: string }>("POST", `/api/sessions/${id}/checks`),
   aiEvent: (id: string, e: { kind: "insert" | "replace" | "copy"; code: string; source?: "button" | "selection" } | { kind: "paste"; code: string; fromAi: boolean } | { kind: "reset" }) =>
     req<{ entry: AiLogEntry }>("POST", `/api/sessions/${id}/ai-events`, e),
   debrief: (id: string) => req<{ messages: DebriefEntry[]; lessons: LessonMeta[] }>("GET", `/api/sessions/${id}/debrief`),
@@ -73,7 +85,7 @@ async function readSse(res: Response, onMessage: (msg: any) => void): Promise<vo
 /** Asks the AI assistant (AI-assisted rounds). Streams the reply; returns the logged prompt and reply. */
 export async function streamAssistant(
   id: string,
-  body: { text: string; attachProblem: boolean; attachCode: boolean; language: Language; code: string },
+  body: { text: string; attachProblem: boolean; attachCode: boolean; language?: Language; code: string; file?: string },
   onDelta: (t: string) => void,
 ): Promise<{ prompt?: AiLogEntry; response?: AiLogEntry; error?: string }> {
   const res = await fetch(`/api/sessions/${id}/assistant`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -104,6 +116,24 @@ async function postSse(url: string, body: unknown, onMessage: (msg: any) => void
     else onMessage(msg);
   });
   if (error) throw new Error(error);
+}
+
+/** Runs a terminal command (debugging rounds); streams its output. Abort the signal to stop it. */
+export async function streamTerminal(id: string, command: string, onOutput: (s: string) => void, signal: AbortSignal): Promise<ActivityEntry | undefined> {
+  let entry: ActivityEntry | undefined;
+  const res = await fetch(`/api/sessions/${id}/terminal`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ command }), signal });
+  if (!(res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? res.statusText);
+  }
+  let error: string | undefined;
+  await readSse(res, (msg) => {
+    if (msg.out) onOutput(msg.out);
+    if (msg.error) error = msg.error;
+    if (msg.done) entry = msg.entry;
+  });
+  if (error) throw new Error(error);
+  return entry;
 }
 
 /** Sends a debrief message; streams the coach's reply. */

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import type {
+  ActivityEntry,
   AiLogEntry,
   ChatEntry,
   Evaluation,
@@ -14,6 +15,7 @@ import type {
 import { LANGUAGES } from "../shared/types.ts";
 import { SESSIONS_DIR } from "./paths.ts";
 import { getQuestion, loadQuestions } from "./questions.ts";
+import { copyProject, projectDir } from "./debug/project.ts";
 
 /*
  * Session folder layout (everything under sessions/ is gitignored):
@@ -23,7 +25,9 @@ import { getQuestion, loadQuestions } from "./questions.ts";
  *     prompt.md             the question as presented
  *     transcript.jsonl      interviewer chat, one entry per line
  *     ai-log.jsonl          AI-assisted rounds: assistant prompts, replies, and inserts/copies/pastes
- *     workspace/            live autosaved work (solution.<ext>, design.md, design.excalidraw, design.png)
+ *     activity.jsonl        debugging rounds: files opened and terminal commands
+ *     workspace/            live autosaved work (solution.<ext>, design.md, design.excalidraw, design.png,
+ *                           or project/ for debugging questions: the candidate's copy of the app)
  *     runs/run-NNN.json     every Run: code, language, results
  *     evidence/             frozen packet assembled at submit + follow-up answers
  *     evaluation.json       structured rubric evaluation
@@ -71,6 +75,8 @@ export function createSession(questionId: string, config: SessionConfig): Sessio
       state.part = 0;
       state.partResults = [];
     }
+  } else if (q.meta.type === "debugging") {
+    copyProject(q.project!.dir, projectDir(id));
   } else {
     state.design = { markdown: "## Requirements\n\n## Estimates\n\n## API\n\n## Data model\n\n## High-level design\n\n## Deep dives & tradeoffs\n" };
   }
@@ -106,6 +112,21 @@ export function readAiLog(id: string): AiLogEntry[] {
     .split("\n")
     .filter(Boolean)
     .map((l) => JSON.parse(l) as AiLogEntry);
+}
+
+export function appendActivity(id: string, entry: ActivityEntry): ActivityEntry {
+  fs.appendFileSync(path.join(sessionDir(id), "activity.jsonl"), JSON.stringify(entry) + "\n");
+  return entry;
+}
+
+export function readActivity(id: string): ActivityEntry[] {
+  const f = path.join(sessionDir(id), "activity.jsonl");
+  if (!fs.existsSync(f)) return [];
+  return fs
+    .readFileSync(f, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as ActivityEntry);
 }
 
 export function readTranscript(id: string): ChatEntry[] {
@@ -145,7 +166,8 @@ export function designPng(id: string): string | undefined {
 export interface RunRecord {
   n: number;
   at: string;
-  language: Language;
+  /** Absent for debugging rounds, which run the question's checks against the project. */
+  language?: Language;
   code: string;
   result: RunResult;
   submit?: boolean;
@@ -161,7 +183,7 @@ export interface RunRecord {
  */
 export function recordRun(
   state: SessionState,
-  language: Language,
+  language: Language | undefined,
   code: string,
   result: RunResult,
   submit = false,
