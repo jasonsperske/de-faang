@@ -1,0 +1,59 @@
+{
+  "id": "airline-agency-booking-api",
+  "title": "Design an Airline Booking API for Travel Agencies",
+  "type": "system-design",
+  "difficulty": "hard",
+  "durationMinutes": 45,
+  "tags": ["system-design", "api-design", "idempotency", "transactions", "sagas"],
+  "rubric": "system-design",
+  "followUps": [
+    "An agency sends a create-order request, your service commits the order, and the response is lost. The agency retries 30 seconds later, and again 6 hours later after an outage on their side. Walk through exactly what your system does each time, including where the idempotency record lives and when it expires.",
+    "Two requests arrive at the same moment with the same idempotency key but different passenger counts. What does each one get back, and how do you guarantee that in your storage layer?",
+    "An order has three segments on flights whose inventory lives on different shards. The second segment's reservation fails. How do you leave the system consistent, and what does the agency see?",
+    "The legacy ticketing system sometimes times out after it has already issued the tickets. How do you make ticket issuance exactly-once from the agency's point of view?",
+    "An agency confirms an order one second before its hold expires, while the expiry job is releasing the same seats. Show how your design makes sure exactly one of those wins and the seats are never both released and ticketed."
+  ],
+  "interviewer": {
+    "approach": "Strong answers scope tightly: no customer PII and no payment processing, so the API deals in orders that reference agency-supplied passenger references, with commitment recorded against the agency's credit account. API: POST /v1/orders with a required Idempotency-Key header (scoped per agency; the server stores a fingerprint of the request body and rejects reuse with a different body with 422, and returns 409 or waits when the original is still in flight); GET /v1/orders/{id}; POST /v1/orders/{id}/confirm, /cancel, and /changes, each either taking an idempotency key or being idempotent by state transition (confirming an already-confirmed order returns the same result); ETag/If-Match or an order version for concurrent modifications; long-running work such as ticketing returns 202 with a status resource plus signed webhooks with event ids (at-least-once; agencies dedupe on event id). Idempotency storage: a durable table keyed by (agency_id, idempotency_key) written in the SAME database transaction as the order (or the order id derived deterministically from that pair so the order's primary key is the dedupe), holding status, request hash, and the response to replay; retention of days, not minutes, because agencies replay hours later; never a cache alone. Inventory: counters per (flight, date, fare bucket) with an atomic conditional update (UPDATE ... SET held = held + n WHERE capacity - sold - held >= n), never read-then-write; holds expire after 20 minutes via a state-guarded transition (UPDATE ... WHERE status = 'HELD' AND expires_at < now()), so confirm and expiry race safely and exactly one wins. Multi-segment orders span inventory shards, so use a saga, not 2PC: a persisted order state machine reserves each segment with an idempotent reservation keyed by (order_id, segment), compensates (releases) on failure, and recovers from a crash by resuming from the stored state. Confirm: one local transaction moves HELD to CONFIRMED, records an idempotent credit-ledger entry keyed by order_id (credit check against the agency's limit), and writes an outbox row; an outbox worker calls the legacy ticketing system with a client reference derived from the order (e.g. order_id + version), and on timeout looks up by that reference before retrying, so tickets are issued once. Scale: partition orders and idempotency records by agency or order id together; partition inventory by flight-date; hot flights during sales need short transactions, maybe bucket splitting; per-agency rate limits and quotas protect fairness. Multi-region: idempotency records must be globally consistent (a globally consistent database, or a home region per agency for writes and per flight for inventory); discuss what happens to in-flight holds when a region fails.",
+    "hints": [
+      "Agencies retry whenever they time out. What has to be true about each endpoint for that to be safe, and which endpoints are naturally safe already?",
+      "Where would you record that a request with a given idempotency key has already been processed? What happens if the server crashes between doing the work and recording that?",
+      "Two agencies try to hold the last seat on a flight at the same instant. What exact operation on your inventory store prevents both from succeeding?",
+      "An order with several segments touches inventory on several shards. Do you want a distributed lock or 2PC there, or something that tolerates partial failure? What would you need to persist to recover after a crash?",
+      "The ticketing system isn't idempotent and is slow. How can you call it from your system so a retry never issues tickets twice, and so the agency's request doesn't wait on it?"
+    ],
+    "pitfalls": [
+      "Idempotency keys checked with read-then-insert (race between duplicate requests) instead of a unique constraint or conditional write.",
+      "Recording the idempotency key in a different transaction from the order, so a crash between the two creates a duplicate order or a key pointing at nothing.",
+      "Keeping idempotency records only in a cache, or with a TTL shorter than the agencies' retry window.",
+      "Not storing or comparing a request fingerprint, so a reused key with a different body silently returns the wrong order.",
+      "Overselling via read-modify-write on seat counts, or a global lock on the flight that won't scale during sales.",
+      "Using two-phase commit across inventory shards and the ticketing system, or ignoring partial failure in multi-segment orders.",
+      "Calling the non-idempotent ticketing system synchronously from the API request, and retrying it blindly after a timeout.",
+      "A hold-expiry job and confirm that can both succeed for the same seats because transitions aren't conditioned on the current state.",
+      "Spending the interview on customer profiles or payments, which are explicitly out of scope."
+    ],
+    "facts": [
+      "Only travel agencies call the API; there is no consumer-facing booking. About 2,000 agencies are onboarded, from small offices to large online travel agencies that resell to other agencies.",
+      "Agencies authenticate with mutual TLS plus an OAuth client-credentials token per agency.",
+      "Out of scope: storing passenger personal data (agencies send opaque passenger references) and taking payments. Agencies settle monthly; the airline only tracks each agency's credit limit and the value of confirmed orders against it.",
+      "Availability search and pricing are served by a separate cached shopping service; you design the order operations. Orders must not exceed the seats that revenue management has authorised for each fare bucket.",
+      "About 3,000 flights per day with about 200 seats each, sold up to 330 days ahead, each split into about 10 fare buckets.",
+      "Average load is about 1 million orders per day; flash sales peak at about 2,000 order-creation requests per second, heavily concentrated on a few hundred flights.",
+      "An order holds 1 to 9 passengers and 1 to 4 flight segments (one-way, return, connections). A new order is a hold that expires after 20 minutes unless the agency confirms it.",
+      "Confirming an order commits it against the agency's credit and triggers ticket issuance. Confirmed orders can be cancelled (free within 24 hours) or changed to other flights.",
+      "Ticket issuance goes through a legacy ticketing system that takes 2 to 10 seconds, sometimes times out after it has actually issued the tickets, and lets you look up past issuances by a client reference you supply.",
+      "Agency clients time out after 30 seconds and retry automatically. About 2% of order requests arrive more than once, and after their own outages some agencies replay requests up to 24 hours later.",
+      "Targets: create and confirm p99 under 1 second (ticketing may complete asynchronously), 99.95% availability.",
+      "The service runs in two regions; an agency's requests can land in either, and a region can fail."
+    ],
+    "deepDives": [
+      "Idempotency-key semantics and storage: scope, fingerprinting, in-flight duplicates, retention, and atomicity with the order write",
+      "Inventory concurrency: atomic holds, hold expiry versus confirm, hot flights during flash sales",
+      "Multi-segment orders as a saga: reservations, compensation, crash recovery",
+      "Exactly-once ticket issuance with a transactional outbox and a non-idempotent downstream system",
+      "Partitioning and multi-region consistency for idempotency records and inventory"
+    ]
+  },
+  "resources": ["stripe-idempotency", "brandur-idempotency-keys", "ietf-idempotency-key", "saga-pattern", "transactional-outbox", "ddia", "sdp-primer", "hellointerview"]
+}
