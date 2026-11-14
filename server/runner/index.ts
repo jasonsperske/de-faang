@@ -1,7 +1,9 @@
 import type { CaseResult, Language, RunResult, TestCase } from "../../shared/types.ts";
 import type { Question } from "../questions.ts";
 import { buildProgram, RESULT_MARKER, type HarnessSpec } from "./harness.ts";
-import { execute } from "./execute.ts";
+import { ensureRuntime, execute, TIMEOUT_EXIT, type ExecResult } from "./execute.ts";
+import { BEGIN_MARK, buildTypedProgram, END_MARK, isTypedLanguage } from "./typed.ts";
+import { InputError } from "./signature.ts";
 
 export interface LabeledCase {
   kind: CaseResult["kind"];
@@ -24,15 +26,34 @@ interface RawRun {
   durationMs: number;
 }
 
-async function runRaw(lang: Language, code: string, entry: string, spec: HarnessSpec): Promise<RawRun> {
+const timeLimitMessage = () =>
+  `Time limit exceeded (${process.env.DEFAANG_RUN_TIMEOUT ?? 10}s). Look for an infinite loop or an algorithm that is too slow.`;
+
+async function runRaw(q: Question, lang: Language, code: string, tests: TestCase[]): Promise<RawRun> {
+  const sig = q.meta.signature!;
+  const entry = sig.entry[lang];
+  if (!entry) return { ok: false, cases: [], compileError: `This question isn't available in ${lang} yet.`, durationMs: 0 };
+  const unavailable = await ensureRuntime(lang);
+  if (unavailable) return { ok: false, cases: [], compileError: unavailable, durationMs: 0 };
+  if (isTypedLanguage(lang)) {
+    let files: Record<string, string>;
+    try {
+      files = buildTypedProgram(lang, sig, entry, code, tests.map((t) => ({ args: t.args as unknown[], ops: t.ops })));
+    } catch (e) {
+      if (e instanceof InputError) return { ok: false, cases: [], compileError: `Invalid test input. ${e.message}`, durationMs: 0 };
+      throw e;
+    }
+    return parseCaseStream(await execute(lang, files, ""), tests.length);
+  }
+  const spec = toSpec(q, lang, tests);
   const program = buildProgram(lang, code, entry);
-  const r = await execute(lang, program, JSON.stringify(spec));
+  const r = await execute(lang, { [`main.${lang === "python" ? "py" : lang === "javascript" ? "js" : "ts"}`]: program }, JSON.stringify(spec));
   const idx = r.stdout.lastIndexOf(RESULT_MARKER);
   if (r.timedOut) {
     return {
       ok: false,
       cases: [],
-      compileError: `Time limit exceeded (${process.env.DEFAANG_RUN_TIMEOUT ?? 10}s). Look for an infinite loop or an algorithm that is too slow.`,
+      compileError: timeLimitMessage(),
       stderr: r.stderr.slice(-4000),
       durationMs: r.durationMs,
     };
@@ -49,6 +70,62 @@ async function runRaw(lang: Language, code: string, entry: string, spec: Harness
   }
   const line = r.stdout.slice(idx + RESULT_MARKER.length).split("\n")[0];
   return { ok: true, cases: JSON.parse(line) as RawCase[], stderr: r.stderr.slice(-4000) || undefined, durationMs: r.durationMs };
+}
+
+const SIGNALS: Record<number, string> = {
+  134: "Aborted (SIGABRT): e.g. a failed assertion, an uncaught C++ exception, a double free, or a Rust stack overflow.",
+  136: "Floating point exception (SIGFPE): usually an integer division by zero.",
+  137: "Killed (SIGKILL): the program exceeded the 512MB memory limit or the time limit.",
+  139: "Segmentation fault (SIGSEGV): invalid memory access (null or dangling pointer, out-of-bounds index) or a stack overflow from deep recursion.",
+};
+
+/**
+ * Parses the per-case stream the compiled-language harnesses print (see typed.ts). Cases that
+ * finished keep their results even when a later case crashes or runs out of time.
+ */
+function parseCaseStream(r: ExecResult, count: number): RawRun {
+  const stderr = r.stderr.slice(-4000) || undefined;
+  const segments = r.stdout.split(BEGIN_MARK);
+  if (segments.length === 1) {
+    // Never reached the first case: compile error (or a crash before main).
+    if (r.timedOut) return { ok: false, cases: [], compileError: "Compilation timed out.", stderr, durationMs: r.durationMs };
+    if (r.exitCode === TIMEOUT_EXIT) return { ok: false, cases: [], compileError: timeLimitMessage(), stderr, durationMs: r.durationMs };
+    const why = r.exitCode !== null && SIGNALS[r.exitCode] ? SIGNALS[r.exitCode] + "\n" : "";
+    return {
+      ok: false,
+      cases: [],
+      compileError: why + (r.stderr.trim() || r.stdout.trim() || `Program exited with code ${r.exitCode}`).slice(-6000),
+      durationMs: r.durationMs,
+    };
+  }
+  const crash = () => {
+    if (r.timedOut || r.exitCode === TIMEOUT_EXIT) return timeLimitMessage() + " (shared across all test cases)";
+    const sig = r.exitCode !== null ? SIGNALS[r.exitCode] : undefined;
+    const tail = r.stderr.trim().slice(-1500);
+    return [sig ?? `The program exited with code ${r.exitCode} during this case.`, tail].filter(Boolean).join("\n");
+  };
+  const cases: RawCase[] = [];
+  for (let i = 0; i < count; i++) {
+    const seg = segments[i + 1];
+    if (seg === undefined) {
+      cases.push({ index: i, error: "Not run: the program stopped during an earlier test case." });
+      continue;
+    }
+    const end = seg.indexOf(END_MARK);
+    if (end === -1) {
+      cases.push({ index: i, error: crash(), stdout: seg.slice(-4000) || undefined });
+      continue;
+    }
+    const stdout = seg.slice(0, end).slice(-4000);
+    const line = seg.slice(end + END_MARK.length).split("\n")[0];
+    try {
+      const rec = JSON.parse(line) as { ms?: number; output?: unknown; error?: string };
+      cases.push({ index: i, output: rec.error === undefined ? (rec.output ?? null) : undefined, error: rec.error, ms: rec.ms, stdout });
+    } catch {
+      cases.push({ index: i, error: crash(), stdout });
+    }
+  }
+  return { ok: true, cases, stderr, durationMs: r.durationMs };
 }
 
 function canonical(v: unknown): string {
@@ -83,7 +160,7 @@ function toSpec(q: Question, lang: Language, cases: TestCase[]): HarnessSpec {
   const sig = q.meta.signature!;
   return {
     kind: sig.kind,
-    entry: sig.entry[lang],
+    entry: sig.entry[lang]!,
     cases: cases.map((c) => ({ args: c.args as unknown[], ops: c.ops })),
   };
 }
@@ -105,8 +182,8 @@ export async function runCases(
   const needRef = opts.withReference && q.reference && cases.some((c) => c.test.expected === undefined);
 
   const [run, ref] = await Promise.all([
-    runRaw(lang, code, sig.entry[lang], toSpec(q, lang, tests)),
-    needRef ? runRaw("python", q.reference!, sig.entry.python, toSpec(q, "python", tests)) : Promise.resolve(null),
+    runRaw(q, lang, code, tests),
+    needRef ? runRaw(q, "python", q.reference!, tests) : Promise.resolve(null),
   ]);
 
   const results: CaseResult[] = cases.map((c, i) => {

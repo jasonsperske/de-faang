@@ -9,7 +9,9 @@
   "signature": {
     "kind": "class",
     "entry": { "python": "LRUCache", "javascript": "LRUCache", "typescript": "LRUCache" },
-    "compare": "exact"
+    "compare": "exact",
+    "init": [{"name": "capacity", "type": "int"}],
+    "methods": {"get": {"params": [{"name": "key", "type": "int"}], "returns": "int"}, "put": {"params": [{"name": "key", "type": "int"}, {"name": "value", "type": "int"}], "returns": "void"}}
   },
   "followUps": [
     "Walk me through why each operation is O(1). Which data structure provides which guarantee?",

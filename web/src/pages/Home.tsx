@@ -32,7 +32,7 @@ export function Home() {
       <header className="home-header">
         <div>
           <h1>
-            de-faang <span className="tooth">🦷</span>
+            de-faang
           </h1>
           <p className="tagline">Practice FAANG-style coding and system design rounds locally, with an AI interviewer and rubric-based feedback.</p>
         </div>
@@ -123,7 +123,11 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
   const [provider, setProvider] = useState<Provider>(firstAvailable);
   const [strictness, setStrictness] = useState<Strictness>("standard");
   const [verbosity, setVerbosity] = useState<Verbosity>("normal");
-  const [language, setLanguage] = useState<Language>("python");
+  const languages = LANGUAGES.filter((l) => q.languages?.includes(l.id));
+  const [language, setLanguage] = useState<Language>(() => {
+    const last = lastLanguage();
+    return last && q.languages?.includes(last) ? last : "python";
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,6 +136,7 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
     setError(null);
     try {
       const v = await api.createSession(q.id, { provider, strictness, verbosity, language: q.type === "coding" ? language : undefined });
+      if (q.type === "coding") rememberLanguage(language);
       location.hash = `#/session/${v.session.id}`;
     } catch (e) {
       setError((e as Error).message);
@@ -188,9 +193,10 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
             <div>
               <label className="field-label">Language</label>
               <select value={language} onChange={(e) => setLanguage(e.target.value as Language)}>
-                {LANGUAGES.map((l) => (
+                {languages.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.label}
+                    {config.pendingLanguages.includes(l.id) ? " (downloading…)" : ""}
                   </option>
                 ))}
               </select>
@@ -210,4 +216,20 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
       </div>
     </div>
   );
+}
+
+const LANGUAGE_KEY = "defaang:last-language";
+function lastLanguage(): Language | undefined {
+  try {
+    return (localStorage.getItem(LANGUAGE_KEY) as Language | null) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+function rememberLanguage(l: Language) {
+  try {
+    localStorage.setItem(LANGUAGE_KEY, l);
+  } catch {
+    /* not persisted */
+  }
 }

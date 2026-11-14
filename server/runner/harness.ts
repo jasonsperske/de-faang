@@ -24,6 +24,8 @@ export function buildProgram(lang: Language, userCode: string, entry: string): s
     case "javascript":
     case "typescript":
       return `${userCode}\n\n${jsHarness(entry)}`;
+    default:
+      throw new Error(`${lang} uses the compiled-language harness (typed.ts)`);
   }
 }
 

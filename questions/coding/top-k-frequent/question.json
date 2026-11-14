@@ -9,7 +9,9 @@
   "signature": {
     "kind": "function",
     "entry": { "python": "top_k_frequent", "javascript": "topKFrequent", "typescript": "topKFrequent" },
-    "compare": "unordered"
+    "compare": "unordered",
+    "params": [{"name": "nums", "type": "int[]"}, {"name": "k", "type": "int"}],
+    "returns": "int[]"
   },
   "followUps": [
     "Compare the complexity of sorting all counts, using a size-k heap, and bucket sort. When would you choose each?",

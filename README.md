@@ -1,8 +1,8 @@
-# de-faang 🦷
+# de-faang
 
 Take the fear out of FAANG interviews. **de-faang** runs realistic coding and system design rounds on your own machine, with an LLM interviewer (Claude, Codex, Gemini, or Meta's Muse) that talks with you in real time, and a rubric-based evaluation afterward that links to resources for what to study next.
 
-- **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, or TypeScript; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
+- **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, TypeScript, Java, C++, C, Go, or Rust; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
 - **System design whiteboard.** Excalidraw canvas plus a markdown notes pad. The interviewer "sees" your diagram as a text summary on every turn, and the evaluator gets the PNG.
 - **Configurable interviewer**
   - **Strict:** the prompt only. No sample tests, no hints, neutral tone. Hidden test details stay hidden until the evaluation.
@@ -19,7 +19,7 @@ Every round lives in its own folder under `sessions/`, which git ignores, so you
 ```bash
 npm install
 cp .env.example .env          # add at least one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, META_API_KEY
-npm run docker:pull           # pre-pull python:3.12-slim and node:22-slim (the first run also auto-pulls)
+npm run docker:pull           # pre-fetch every language's toolchain image, ~5 GB (otherwise fetched on first use)
 npm run dev                   # API on :4317, UI on http://localhost:5173
 ```
 
@@ -37,7 +37,7 @@ To click through the UI without API keys or token spend, set `DEFAANG_MOCK_LLM=1
 | `OPENAI_MODEL` | `gpt-5.3-codex` | Any Responses-API model. |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | e.g. `gemini-4-argon` if your key has access. |
 | `MUSE_MODEL` | `muse-spark-1.3` | `muse-wonder-1.0` is Meta's most capable model (preview); `muse-ember-1.0` is the efficient one. |
-| `DEFAANG_RUNNER` | `docker` | `local` runs code with your host's `python3`/`node`, with **no isolation**. |
+| `DEFAANG_RUNNER` | `docker` | `local` runs code with your host's `python3`/`node`/`gcc`/`go`/`rustc`/`javac`, with **no isolation**. |
 | `DEFAANG_RUN_TIMEOUT` | `10` | Seconds per run. |
 | `DEFAANG_MOCK_LLM` | | `1` = offline canned responses. |
 
@@ -71,7 +71,7 @@ questions/coding/<id>/
   prompt.md          what the candidate sees
   tests.json         { "public": [...], "hidden": [...] }
   reference.py       reference solution; also produces expected output for custom inputs
-  starter/solution.{py,js,ts}
+  starter/solution.{py,js,ts}   (optional for go/c/cpp/rs/java: generated from the typed signature)
 
 questions/system-design/<id>/
   question.json      includes interviewer.facts (revealed only when asked) and deepDives
@@ -80,6 +80,7 @@ questions/system-design/<id>/
 
 - **Function questions:** each test is `{ "args": [arg1, arg2], "expected": ... }`. Entry-point names can differ per language (`two_sum` vs `twoSum`).
 - **Class questions** (e.g. LRU cache) use the LeetCode convention: `{ "ops": ["LRUCache", "put", "get"], "args": [[2], [1, 1], [1]], "expected": [null, null, 1] }`.
+- **Typed signature (Java, C++, C, Go, Rust):** compiled languages need types. Add `"params": [{ "name": "nums", "type": "int[]" }, { "name": "target", "type": "int" }], "returns": "int[]"` to a function signature, or `"init": [...]` (constructor parameters) and `"methods": { "get": { "params": [...], "returns": "int" } }` to a class signature. Types are `int`, `long`, `double`, `bool`, `string`, any of those with `[]` or `[][]`, and `void`. Starters, entry names and harnesses for every compiled language are generated from this, following LeetCode conventions: `class Solution` in Java/C++, `impl Solution` in Rust, a plain function in Go and C with `(pointer, size)` array parameters and `returnSize` outputs in C, `Constructor` plus capitalised methods for Go classes, and `lRUCacheCreate/Get/Free` functions for C classes. C supports arrays up to `[][]` (`string[]` for strings). A question without types is offered only in Python, JavaScript and TypeScript.
 - **`signature.compare`:** `exact` (the default; floats compared with a tolerance) or `unordered`, which ignores top-level array order.
 - **Rubrics** live in `rubrics/*.json` (weighted dimensions with 1–4 level descriptors).
 - **Resources** live in `resources/resources.json`. The evaluator can link **only** to ids in this library, so links can't be hallucinated.
@@ -91,21 +92,22 @@ web/      React + Vite UI (Monaco, Excalidraw, react-markdown)
 server/   Fastify API
   llm/          provider interface → Claude (Anthropic SDK) / Codex + Muse (OpenAI Responses API; Muse via
                 Meta's api.meta.ai/v1) / Gemini (@google/genai) / mock. All stream chat and return schema-constrained JSON.
-  runner/       harness that appends to your code + Docker/local executor + result comparison
+  runner/       harnesses (harness.ts for Python/JS/TS, typed.ts for compiled languages),
+                Docker/local executor, result comparison
   interviewer.ts  persona and strictness prompts, workspace snapshots
   evaluator.ts    packet assembly, rubric scoring, report rendering
   sessions.ts     session-folder storage
 shared/   types shared by the server and the UI
 ```
 
-How the runner works: your code is concatenated with a small language-specific harness, so error line numbers match the editor. The harness reads test cases on stdin, calls your function or class for each case while capturing stdout, errors, and timing, and prints one JSON result line. The Docker sandbox runs with `--network none`, a read-only filesystem, 512 MB of memory, 1 CPU, a 64-process cap, and an unprivileged user.
+How the runner works: your code is combined with a small language-specific harness, so error line numbers match the editor. For Python and JavaScript/TypeScript the harness reads test cases on stdin, calls your function or class for each case while capturing stdout, errors, and timing, and prints one JSON result line. For compiled languages the harness is generated with the test inputs as typed literals, compiled next to your file (`Solution.java`, `solution.cpp`, `solution.go`, ...), and prints a marked result per case, so a segfault or time-out in one case still reports the cases before it. Compilation doesn't count toward the time limit. Images: `python:3.12-slim`, `node:22-slim`, `gcc:15` (C/C++), `eclipse-temurin:25-jdk`, `rust:1-slim-bookworm`, and `defaang-go:1`, built locally from `docker/go/` with a pre-compiled standard library so Go builds take about a second instead of fifteen. Missing images download in the background; Python/JS work as soon as theirs are present. The Docker sandbox runs with `--network none`, a read-only filesystem, 512 MB of memory, 1 CPU, a 64-process cap, and an unprivileged user.
 
 Claude requests enable server-side refusal fallbacks (`fallbacks: "default"`), so a safety-classifier false positive doesn't end an interview turn. The interviewer's system prompt is cached across turns.
 
 ## Tests
 
 ```bash
-npm test                                  # runner tests (local runner, fast)
+npm test                                  # runner tests (local runner) + compiled-language tests (Docker; skipped without it)
 DEFAANG_TEST_RUNNER=docker npm test       # same tests through the Docker sandbox
 npm run typecheck
 ```

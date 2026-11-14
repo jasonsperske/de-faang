@@ -9,7 +9,9 @@
   "signature": {
     "kind": "function",
     "entry": { "python": "two_sum", "javascript": "twoSum", "typescript": "twoSum" },
-    "compare": "unordered"
+    "compare": "unordered",
+    "params": [{"name": "nums", "type": "int[]"}, {"name": "target", "type": "int"}],
+    "returns": "int[]"
   },
   "followUps": [
     "What are the time and space complexities of your solution? Could you trade space for time or vice versa?",

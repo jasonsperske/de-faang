@@ -9,7 +9,7 @@ beforeAll(() => {
   loadQuestions(true);
 });
 
-const twoSum: Record<Language, string> = {
+const twoSum: Record<"python" | "javascript" | "typescript", string> = {
   python: "def two_sum(nums, target):\n    seen = {}\n    for i, x in enumerate(nums):\n        if target - x in seen:\n            return [seen[target - x], i]\n        seen[x] = i\n",
   javascript: "function twoSum(nums, target) {\n  const m = new Map();\n  for (let i = 0; i < nums.length; i++) {\n    if (m.has(target - nums[i])) return [m.get(target - nums[i]), i];\n    m.set(nums[i], i);\n  }\n}\n",
   typescript: "function twoSum(nums: number[], target: number): number[] {\n  const m = new Map<number, number>();\n  for (let i = 0; i < nums.length; i++) {\n    const j = m.get(target - nums[i]);\n    if (j !== undefined) return [j, i];\n    m.set(nums[i], i);\n  }\n  return [];\n}\n",
@@ -21,7 +21,7 @@ const allCases = (id: string) => {
 };
 
 describe("runner", () => {
-  for (const lang of ["python", "javascript", "typescript"] as Language[]) {
+  for (const lang of ["python", "javascript", "typescript"] as const) {
     it(`passes two-sum in ${lang}`, async () => {
       const r = await runCases(getQuestion("two-sum"), lang, twoSum[lang], allCases("two-sum"), { withReference: false });
       expect(r.compileError).toBeUndefined();

@@ -17,4 +17,4 @@ args = [[2],        [1,1], [2,2], [1],   [3,3], [2],   [4,4], [1],   [3],   [4]]
 →      [null,       null,  null,  1,     null,  -1,    null,  -1,    3,     4]
 ```
 
-> **Test format:** each test is a sequence of operations. The first op constructs the class; each later op calls a method with the matching args. Method names are the same in every language (`get`, `put`).
+> **Test format:** each test is a sequence of operations. The first op constructs the class; each later op calls a method with the matching args. Method names follow each language's convention: `get`/`put` in most, `Get`/`Put` in Go, `lRUCacheGet`/`lRUCachePut` in C (the starter shows the exact names).

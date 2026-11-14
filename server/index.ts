@@ -5,7 +5,7 @@ import Fastify, { type FastifyReply } from "fastify";
 import fastifyStatic from "@fastify/static";
 import { z } from "zod";
 import type { AppConfig, Language, RunResult, SessionView, TestCase } from "../shared/types.ts";
-import { LANGUAGES } from "../shared/types.ts";
+import { LANGUAGES, LANGUAGE_IDS } from "../shared/types.ts";
 import { ROOT, SESSIONS_DIR } from "./paths.ts";
 import { getQuestion, loadQuestions, questionView, summarize } from "./questions.ts";
 import { runCases, type LabeledCase } from "./runner/index.ts";
@@ -23,14 +23,14 @@ app.setErrorHandler((err: Error & { statusCode?: number }, _req, reply) => {
   reply.status(status).send({ error: err instanceof z.ZodError ? z.prettifyError(err) : err.message });
 });
 
-const Lang = z.enum(["python", "javascript", "typescript"]);
+const Lang = z.enum(LANGUAGE_IDS);
 const IdParams = z.object({ id: z.string() });
 
 // ---------------------------------------------------------------- config & library
 
 app.get("/api/config", async (): Promise<AppConfig> => {
   const runner = await checkRunner();
-  return { providers: providerInfo(), runner: runnerMode(), runnerReady: runner.ready, runnerMessage: runner.message };
+  return { providers: providerInfo(), runner: runnerMode(), runnerReady: runner.ready, runnerMessage: runner.message, pendingLanguages: runner.pending };
 });
 
 app.get("/api/questions", async () => [...loadQuestions().values()].map(summarize));

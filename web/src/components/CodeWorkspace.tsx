@@ -94,15 +94,16 @@ export function CodeWorkspace(p: Props) {
     }
   };
 
+  const lang = LANGUAGES.find((l) => l.id === p.language) ?? LANGUAGES[0];
   const placeholder = isClass
-    ? `One test per line. The first op is the constructor:\n{"ops": ["${p.question.signature?.entry.python}", "put", "get"], "args": [[2], [1, 1], [1]]}`
+    ? `One test per line. The first op is the constructor:\n{"ops": ["${p.question.signature?.entry.javascript}", "put", "get"], "args": [[2], [1, 1], [1]]}`
     : `One test per line, as a JSON array of arguments:\n${p.question.publicTests?.[0] ? fmtJson(p.question.publicTests[0].args) : "[[1, 2, 3], 4]"}`;
 
   return (
     <div className="code-ws">
       <div className="toolbar">
         <select value={p.language} disabled={p.readOnly} onChange={(e) => p.onLanguage(e.target.value as Language)}>
-          {LANGUAGES.map((l) => (
+          {LANGUAGES.filter((l) => p.question.languages?.includes(l.id) ?? true).map((l) => (
             <option key={l.id} value={l.id}>
               {l.label}
             </option>
@@ -126,7 +127,7 @@ export function CodeWorkspace(p: Props) {
       <Panel id="editor" minSize={120} className="editor">
         <Editor
           theme="vs-dark"
-          language={LANGUAGES.find((l) => l.id === p.language)!.monaco}
+          language={lang.monaco}
           value={p.code}
           onChange={(v) => p.onCode(v ?? "")}
           options={{
@@ -134,7 +135,9 @@ export function CodeWorkspace(p: Props) {
             fontSize: 14,
             minimap: { enabled: false },
             scrollBeyondLastLine: false,
-            tabSize: p.language === "python" ? 4 : 2,
+            tabSize: lang.tabSize,
+            insertSpaces: lang.insertSpaces,
+            detectIndentation: false,
             automaticLayout: true,
             // No AI-ish autocomplete: closer to a real interview pad.
             quickSuggestions: false,

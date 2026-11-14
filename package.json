@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p web/tsconfig.json --noEmit",
     "test": "vitest run",
     "validate": "tsx server/scripts/validate-questions.ts",
-    "docker:pull": "docker pull python:3.12-slim && docker pull node:22-slim"
+    "docker:pull": "docker pull python:3.12-slim && docker pull node:22-slim && docker pull gcc:15 && docker pull rust:1-slim-bookworm && docker pull eclipse-temurin:25-jdk && docker build -t defaang-go:1 docker/go"
   },
   "engines": {
     "node": ">=22.6"

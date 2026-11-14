@@ -2,12 +2,18 @@
 
 export type QuestionType = "coding" | "system-design";
 export type Difficulty = "easy" | "medium" | "hard";
-export type Language = "python" | "javascript" | "typescript";
-export const LANGUAGES: { id: Language; label: string; ext: string; monaco: string }[] = [
-  { id: "python", label: "Python 3", ext: "py", monaco: "python" },
-  { id: "javascript", label: "JavaScript (Node)", ext: "js", monaco: "javascript" },
-  { id: "typescript", label: "TypeScript (Node)", ext: "ts", monaco: "typescript" },
+export type Language = "python" | "javascript" | "typescript" | "go" | "c" | "cpp" | "rust" | "java";
+export const LANGUAGES: { id: Language; label: string; ext: string; monaco: string; tabSize: number; insertSpaces: boolean }[] = [
+  { id: "python", label: "Python 3", ext: "py", monaco: "python", tabSize: 4, insertSpaces: true },
+  { id: "javascript", label: "JavaScript (Node)", ext: "js", monaco: "javascript", tabSize: 2, insertSpaces: true },
+  { id: "typescript", label: "TypeScript (Node)", ext: "ts", monaco: "typescript", tabSize: 2, insertSpaces: true },
+  { id: "java", label: "Java 25", ext: "java", monaco: "java", tabSize: 4, insertSpaces: true },
+  { id: "cpp", label: "C++20 (GCC)", ext: "cpp", monaco: "cpp", tabSize: 4, insertSpaces: true },
+  { id: "c", label: "C17 (GCC)", ext: "c", monaco: "c", tabSize: 4, insertSpaces: true },
+  { id: "go", label: "Go 1.25", ext: "go", monaco: "go", tabSize: 4, insertSpaces: false },
+  { id: "rust", label: "Rust (stable)", ext: "rs", monaco: "rust", tabSize: 4, insertSpaces: true },
 ];
+export const LANGUAGE_IDS = LANGUAGES.map((l) => l.id) as [Language, ...Language[]];
 
 export type Provider = "claude" | "codex" | "gemini" | "muse";
 
@@ -33,6 +39,8 @@ export interface QuestionSummary {
   difficulty: Difficulty;
   tags: string[];
   durationMinutes: number;
+  /** Languages the question can be solved in (coding questions only). */
+  languages?: Language[];
 }
 
 export type TestArgs = unknown[];
@@ -106,7 +114,7 @@ export interface QuestionView extends QuestionSummary {
   prompt: string;
   starter?: Partial<Record<Language, string>>;
   publicTests?: TestCase[]; // omitted in strict mode
-  signature?: { kind: "function" | "class"; entry: Record<Language, string> };
+  signature?: { kind: "function" | "class"; entry: Partial<Record<Language, string>> };
   followUps?: string[]; // only once the candidate has submitted
 }
 
@@ -157,4 +165,6 @@ export interface AppConfig {
   runner: "docker" | "local";
   runnerReady: boolean;
   runnerMessage?: string;
+  /** Languages whose toolchain is still downloading (first use of the Docker runner). */
+  pendingLanguages: Language[];
 }

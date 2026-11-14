@@ -9,7 +9,9 @@
   "signature": {
     "kind": "function",
     "entry": { "python": "merge", "javascript": "merge", "typescript": "merge" },
-    "compare": "exact"
+    "compare": "exact",
+    "params": [{"name": "intervals", "type": "int[][]"}],
+    "returns": "int[][]"
   },
   "followUps": [
     "What is the time complexity, and which step dominates it?",

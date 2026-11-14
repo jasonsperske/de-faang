@@ -5,24 +5,69 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import type { Language } from "../../shared/types.ts";
+import { ROOT } from "../paths.ts";
 
 const execFileP = promisify(execFile);
 
 interface LangRuntime {
   image: string;
-  file: string;
-  cmd: (file: string) => string[];
+  /** Interpreted languages: argv to run the program (`src` = directory holding the source files). */
+  run?: (src: string) => string[];
+  /**
+   * Compiled languages: a shell script that compiles into `out` (writable scratch) and then runs the
+   * binary under `timeout`, so compile time doesn't count against the time limit.
+   */
+  build?: (src: string, out: string) => { compile: string; exec: string };
+  /** Extra wall-clock seconds allowed for compilation. */
+  compileSeconds?: number;
+  /** Size of the writable /tmp inside the container. */
+  tmpfs?: string;
 }
 
+const sh = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+
 export const RUNTIMES: Record<Language, LangRuntime> = {
-  python: { image: "python:3.12-slim", file: "main.py", cmd: (f) => ["python3", "-u", f] },
-  javascript: { image: "node:22-slim", file: "main.js", cmd: (f) => ["node", f] },
-  typescript: {
-    image: "node:22-slim",
-    file: "main.ts",
-    cmd: (f) => ["node", "--experimental-strip-types", "--no-warnings", f],
+  python: { image: "python:3.12-slim", run: (d) => ["python3", "-u", `${d}/main.py`] },
+  javascript: { image: "node:22-slim", run: (d) => ["node", `${d}/main.js`] },
+  typescript: { image: "node:22-slim", run: (d) => ["node", "--experimental-strip-types", "--no-warnings", `${d}/main.ts`] },
+  c: {
+    image: "gcc:15",
+    compileSeconds: 15,
+    build: (src, out) => ({ compile: `gcc -std=gnu17 -O2 -pipe -o ${sh(out + "/prog")} ${sh(src + "/main.c")} -lm`, exec: sh(out + "/prog") }),
+  },
+  cpp: {
+    image: "gcc:15",
+    compileSeconds: 20,
+    build: (src, out) => ({ compile: `g++ -std=gnu++20 -O2 -pipe -o ${sh(out + "/prog")} ${sh(src + "/main.cpp")}`, exec: sh(out + "/prog") }),
+  },
+  go: {
+    // Built from docker/go/Dockerfile: golang plus a pre-compiled standard library cache.
+    image: "defaang-go:1",
+    compileSeconds: 20,
+    build: (src, out) => ({
+      compile:
+        `if [ -d /gocache-seed ]; then cp -r /gocache-seed ${sh(out + "/gocache")} && export GOCACHE=${sh(out + "/gocache")}; fi; ` +
+        `cd ${sh(src)} && CGO_ENABLED=0 go build -o ${sh(out + "/prog")} solution.go harness.go`,
+      exec: sh(out + "/prog"),
+    }),
+  },
+  rust: {
+    image: "rust:1-slim-bookworm",
+    compileSeconds: 30,
+    build: (src, out) => ({ compile: `rustc --edition 2021 -O -C debuginfo=0 -A warnings -o ${sh(out + "/prog")} ${sh(src + "/main.rs")}`, exec: sh(out + "/prog") }),
+  },
+  java: {
+    image: "eclipse-temurin:25-jdk",
+    compileSeconds: 20,
+    build: (src, out) => ({
+      compile: `javac -nowarn -encoding UTF-8 -d ${sh(out + "/classes")} ${sh(src + "/Solution.java")} ${sh(src + "/Main.java")}`,
+      exec: `java -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:-UsePerfData -Xss256m -cp ${sh(out + "/classes")} Main`,
+    }),
   },
 };
+
+/** Images built locally rather than pulled: tag -> build context directory (relative to the repo root). */
+const LOCAL_IMAGES: Record<string, string> = { "defaang-go:1": "docker/go" };
 
 export type RunnerMode = "docker" | "local";
 export const runnerMode = (): RunnerMode => (process.env.DEFAANG_RUNNER === "local" ? "local" : "docker");
@@ -37,13 +82,23 @@ export interface ExecResult {
   durationMs: number;
 }
 
-export async function execute(lang: Language, source: string, stdin: string): Promise<ExecResult> {
+/** Exit code `timeout` uses when the program ran past the time limit. */
+export const TIMEOUT_EXIT = 124;
+
+function command(rt: LangRuntime, src: string, out: string, limit: number): string[] {
+  if (rt.run) return rt.run(src);
+  const { compile, exec } = rt.build!(src, out);
+  return ["sh", "-c", `${compile} && exec timeout -k 1 ${limit} ${exec}`];
+}
+
+export async function execute(lang: Language, files: Record<string, string>, stdin: string): Promise<ExecResult> {
   const rt = RUNTIMES[lang];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "defaang-run-"));
   fs.chmodSync(dir, 0o755); // the container runs as an unprivileged user
-  fs.writeFileSync(path.join(dir, rt.file), source, { mode: 0o644 });
+  for (const [file, source] of Object.entries(files)) fs.writeFileSync(path.join(dir, file), source, { mode: 0o644 });
   const name = `defaang-${randomUUID().slice(0, 12)}`;
   const limit = timeoutSec();
+  const compiled = Boolean(rt.build);
 
   let bin: string;
   let args: string[];
@@ -54,17 +109,16 @@ export async function execute(lang: Language, source: string, stdin: string): Pr
       "--network", "none",
       "--memory", "512m", "--memory-swap", "512m",
       "--cpus", "1", "--pids-limit", "64",
-      "--read-only", "--tmpfs", "/tmp:size=16m",
+      "--read-only", "--tmpfs", compiled ? "/tmp:size=384m,exec" : "/tmp:size=16m",
+      "--ulimit", "stack=268435456:268435456",
       "--user", "65534:65534",
       "--security-opt", "no-new-privileges",
-      "-e", "PYTHONDONTWRITEBYTECODE=1",
+      "-e", "PYTHONDONTWRITEBYTECODE=1", "-e", "HOME=/tmp",
       "-v", `${dir}:/work:ro`, "-w", "/work",
-      rt.image, ...rt.cmd(`/work/${rt.file}`),
+      rt.image, ...command(rt, "/work", "/tmp", limit),
     ];
   } else {
-    const [cmd, ...rest] = rt.cmd(path.join(dir, rt.file));
-    bin = cmd;
-    args = rest;
+    [bin, ...args] = command(rt, dir, dir, limit);
   }
 
   const started = Date.now();
@@ -72,13 +126,17 @@ export async function execute(lang: Language, source: string, stdin: string): Pr
     return await new Promise<ExecResult>((resolve, reject) => {
       const child = spawn(bin, args, {
         cwd: dir,
-        env: runnerMode() === "local" ? { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1", HOME: dir } : process.env,
+        env:
+          runnerMode() === "local"
+            ? { PATH: process.env.PATH, PYTHONDONTWRITEBYTECODE: "1", HOME: dir, GOCACHE: path.join(os.tmpdir(), "defaang-gocache") }
+            : process.env,
       });
       let stdout = "";
       let stderr = "";
       let timedOut = false;
-      // Docker adds container start-up time, so give it headroom beyond the program limit.
-      const wall = (limit + (runnerMode() === "docker" ? 5 : 0)) * 1000;
+      // Docker adds container start-up time and compiled languages need time to build, so the
+      // wall-clock backstop sits beyond the program limit (which `timeout` enforces precisely).
+      const wall = (limit + (rt.compileSeconds ?? 0) + (runnerMode() === "docker" ? 5 : 0)) * 1000;
       const timer = setTimeout(() => {
         timedOut = true;
         if (runnerMode() === "docker") execFile("docker", ["kill", name], () => {});
@@ -106,36 +164,65 @@ export async function execute(lang: Language, source: string, stdin: string): Pr
   }
 }
 
-/** Checks the runner can work; pulls missing images in the background. */
-export async function checkRunner(): Promise<{ ready: boolean; message?: string }> {
-  if (runnerMode() === "local") return { ready: true, message: "Local runner: code runs on this machine without isolation." };
+export interface RunnerStatus {
+  ready: boolean;
+  message?: string;
+  /** Languages whose runtime image is still being downloaded or built (docker mode). */
+  pending: Language[];
+}
+
+const CORE: Language[] = ["python", "javascript", "typescript"];
+
+/**
+ * Checks the runner can work and starts fetching missing runtime images in the background.
+ * The runner is "ready" once the core (Python/Node) images exist; compiled-language toolchains are
+ * large, so they download in the background and are reported per language in `pending`.
+ */
+export async function checkRunner(): Promise<RunnerStatus> {
+  if (runnerMode() === "local") return { ready: true, pending: [], message: "Local runner: code runs on this machine without isolation." };
   try {
     await execFileP("docker", ["info", "--format", "{{.ServerVersion}}"]);
   } catch {
-    return { ready: false, message: "Docker is not reachable. Start Docker or set DEFAANG_RUNNER=local in .env." };
+    return { ready: false, pending: [], message: "Docker is not reachable. Start Docker or set DEFAANG_RUNNER=local in .env." };
   }
-  const images = [...new Set(Object.values(RUNTIMES).map((r) => r.image))];
-  const missing: string[] = [];
-  for (const img of images) {
-    try {
-      await execFileP("docker", ["image", "inspect", img]);
-    } catch {
-      missing.push(img);
-    }
+  const missing = new Set<string>();
+  for (const img of new Set(Object.values(RUNTIMES).map((r) => r.image))) {
+    if (!(await imageExists(img))) missing.add(img);
   }
-  if (missing.length) {
-    for (const img of missing) if (!pulling.has(img)) pull(img);
-    return { ready: false, message: `Pulling runtime images: ${missing.join(", ")} (first run only)…` };
+  for (const img of missing) fetchImage(img);
+  const pending = (Object.keys(RUNTIMES) as Language[]).filter((l) => missing.has(RUNTIMES[l].image));
+  const corePending = pending.filter((l) => CORE.includes(l));
+  if (corePending.length) return { ready: false, pending, message: `Pulling runtime images: ${[...new Set(corePending.map((l) => RUNTIMES[l].image))].join(", ")} (first run only)…` };
+  return { ready: true, pending };
+}
+
+/** Fails fast with a helpful message when a language's image isn't available yet. */
+export async function ensureRuntime(lang: Language): Promise<string | undefined> {
+  if (runnerMode() === "local") return undefined;
+  const img = RUNTIMES[lang].image;
+  if (await imageExists(img)) return undefined;
+  fetchImage(img);
+  return `The ${lang} toolchain (${img}) is still downloading in the background (first use only). Try again in a minute or two.`;
+}
+
+async function imageExists(img: string): Promise<boolean> {
+  try {
+    await execFileP("docker", ["image", "inspect", img]);
+    return true;
+  } catch {
+    return false;
   }
-  return { ready: true };
 }
 
 const pulling = new Set<string>();
-function pull(img: string) {
+function fetchImage(img: string) {
+  if (pulling.has(img)) return;
   pulling.add(img);
-  console.log(`[runner] docker pull ${img}`);
-  execFile("docker", ["pull", img], (err) => {
+  const ctx = LOCAL_IMAGES[img];
+  const args = ctx ? ["build", "-t", img, path.join(ROOT, ctx)] : ["pull", img];
+  console.log(`[runner] docker ${args.join(" ")}`);
+  execFile("docker", args, { maxBuffer: 64 * 1024 * 1024 }, (err) => {
     pulling.delete(img);
-    console.log(err ? `[runner] failed to pull ${img}: ${err.message}` : `[runner] pulled ${img}`);
+    console.log(err ? `[runner] failed to fetch ${img}: ${err.message}` : `[runner] ready: ${img}`);
   });
 }
