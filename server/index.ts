@@ -7,8 +7,9 @@ import { z } from "zod";
 import type { AppConfig, Language, RunResult, SessionView, TestCase } from "../shared/types.ts";
 import { LANGUAGES, LANGUAGE_IDS } from "../shared/types.ts";
 import { ROOT, SESSIONS_DIR } from "./paths.ts";
-import { getQuestion, loadQuestions, questionView, summarize } from "./questions.ts";
-import { runCases, type LabeledCase } from "./runner/index.ts";
+import { getQuestion, loadQuestions, questionView, summarize, type Question } from "./questions.ts";
+import { addPartStub } from "./runner/starters.ts";
+import { mergeResults, runCases, type LabeledCase } from "./runner/index.ts";
 import { checkRunner, runnerMode } from "./runner/execute.ts";
 import { getProvider, LLMError, providerInfo } from "./llm/index.ts";
 import { buildChatMessages, interviewerSystemPrompt, summarizeRun, workspaceSnapshot } from "./interviewer.ts";
@@ -41,14 +42,19 @@ function view(id: string): SessionView {
   const session = S.loadState(id);
   const q = getQuestion(session.questionId);
   const submitted = session.status !== "in_progress";
+  const hide = session.config.strictness === "strict" && session.status !== "evaluated";
   let lastSubmit = submitted ? S.lastSubmit(id) : undefined;
-  if (lastSubmit && session.config.strictness === "strict" && session.status !== "evaluated") lastSubmit = redact(lastSubmit);
+  if (lastSubmit && hide) lastSubmit = redact(lastSubmit);
+  const part = session.part ?? 0;
+  let lastPartResult = !submitted && part > 0 ? S.partSubmit(id, part - 1) : undefined;
+  if (lastPartResult && hide) lastPartResult = redact(lastPartResult);
   return {
     session,
-    question: questionView(q, session.config.strictness, submitted),
+    question: questionView(q, session.config.strictness, submitted, part),
     transcript: S.readTranscript(id),
     folder: path.relative(ROOT, path.join(SESSIONS_DIR, id)),
     lastSubmit,
+    lastPartResult,
   };
 }
 
@@ -122,14 +128,15 @@ app.post("/api/sessions/:id/run", async (req) => {
   if (state.status === "in_progress") S.saveCode(state, body.language, body.code);
 
   const strict = state.config.strictness === "strict";
+  const part = state.part ?? 0;
   const cases: LabeledCase[] = [];
-  if (body.includePublic && !strict) cases.push(...q.tests!.public.map((t) => ({ kind: "public" as const, test: t })));
+  if (body.includePublic && !strict) cases.push(...q.parts[part].tests.public.map((t) => ({ kind: "public" as const, test: t })));
   cases.push(...body.custom.map((c) => ({ kind: "custom" as const, test: c as TestCase })));
   if (!cases.length) throw Object.assign(new Error(strict ? "Strict mode: add your own test inputs to run." : "No test cases selected."), { statusCode: 400 });
 
   // In strict mode there are no expected values for custom inputs, just like a real interview.
-  const result = await runCases(q, body.language, body.code, cases, { withReference: !strict });
-  const rec = S.recordRun(state, body.language, body.code, result);
+  const result = await runCases(q, body.language, body.code, cases, { withReference: !strict, part });
+  const rec = S.recordRun(state, body.language, body.code, result, false, { part: q.multipart ? part : undefined });
   return { result, run: rec.n, summary: summarizeRun(rec) };
 });
 
@@ -142,11 +149,9 @@ app.post("/api/sessions/:id/submit", async (req) => {
   applyWorkspace(state, ws);
 
   if (q.meta.type === "coding" && "code" in ws) {
-    const cases: LabeledCase[] = [
-      ...q.tests!.public.map((t) => ({ kind: "public" as const, test: t })),
-      ...q.tests!.hidden.map((t) => ({ kind: "hidden" as const, test: t })),
-    ];
-    const result = await runCases(q, ws.language, ws.code, cases, { withReference: false });
+    // Multipart: every part reached so far is graded against the final code.
+    const reached = q.parts.slice(0, (state.part ?? 0) + 1);
+    const result = mergeResults(await Promise.all(reached.map((p) => runCases(q, ws.language, ws.code, allTests(p), { withReference: false, part: p.index }))));
     S.recordRun(state, ws.language, ws.code, result, true);
     const ext = LANGUAGES.find((l) => l.id === ws.language)!.ext;
     S.writeEvidence(id, `submission.${ext}`, ws.code);
@@ -161,8 +166,51 @@ app.post("/api/sessions/:id/submit", async (req) => {
   state.status = "followups";
   state.submittedAt = new Date().toISOString();
   S.saveState(state);
-  S.appendTranscript(id, { role: "event", text: "The candidate submitted their solution. The round now moves to written follow-up questions." });
+  const unreached = q.multipart ? q.parts.length - 1 - (state.part ?? 0) : 0;
+  S.appendTranscript(id, {
+    role: "event",
+    text: `The candidate submitted their solution${unreached ? ` without reaching the last ${unreached === 1 ? "part" : `${unreached} parts`}` : ""}. The round now moves to written follow-up questions.`,
+  });
   S.writeEvidence(id, "transcript.md", S.transcriptMarkdown(S.readTranscript(id)));
+  return view(id);
+});
+
+const allTests = (p: Question["parts"][number]): LabeledCase[] => [
+  ...p.tests.public.map((t) => ({ kind: "public" as const, test: t })),
+  ...p.tests.hidden.map((t) => ({ kind: "hidden" as const, test: t })),
+];
+
+/**
+ * Multipart: hands in the current part. Its public and hidden tests run, the result is saved, the
+ * next part is revealed, and its stub is added to the candidate's code in every language.
+ */
+app.post("/api/sessions/:id/next-part", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const ws = z.object({ language: Lang, code: z.string().max(200_000) }).parse(req.body);
+  const state = S.loadState(id);
+  const q = getQuestion(state.questionId);
+  const part = state.part ?? 0;
+  if (state.status !== "in_progress") throw Object.assign(new Error("Already submitted"), { statusCode: 409 });
+  if (!q.multipart || part >= q.parts.length - 1) throw Object.assign(new Error("This is the last part. Submit instead."), { statusCode: 400 });
+  S.saveCode(state, ws.language, ws.code);
+
+  const result = await runCases(q, ws.language, ws.code, allTests(q.parts[part]), { withReference: false, part });
+  S.recordRun(state, ws.language, ws.code, result, false, { part, partSubmit: true });
+  const next = q.parts[part + 1];
+  state.partResults = [...(state.partResults ?? []), { part, at: new Date().toISOString(), passed: result.passed, total: result.total }];
+  state.part = part + 1;
+  for (const [l, code] of Object.entries(state.code ?? {}) as [Language, string][]) {
+    if (next.signature.entry[l]) state.code![l] = addPartStub(l, code, next.signature, next.signature.entry[l]!);
+  }
+  S.saveCode(state, ws.language, state.code![ws.language]!); // also saves state
+  const ext = LANGUAGES.find((l) => l.id === ws.language)!.ext;
+  S.writeEvidence(id, `part-${part + 1}-submission.${ext}`, ws.code);
+  S.writeEvidence(id, `part-${part + 1}-test-results.json`, JSON.stringify(result, null, 2));
+  const outcome = result.ok ? `${result.passed}/${result.total} of its tests passed` : "the code did not compile or run";
+  S.appendTranscript(id, {
+    role: "event",
+    text: `The candidate finished part ${part + 1} ("${q.parts[part].title}"); ${outcome}. Part ${part + 2} of ${q.parts.length} ("${next.title}") is now on their screen. Introduce it briefly and let them start.`,
+  });
   return view(id);
 });
 
@@ -213,7 +261,7 @@ const busy = new Set<string>();
 app.post("/api/sessions/:id/chat", async (req, reply) => {
   const { id } = IdParams.parse(req.params);
   const body = z
-    .object({ kind: z.enum(["message", "hint", "open", "run"]), text: z.string().max(20_000).optional(), workspace: Workspace.optional() })
+    .object({ kind: z.enum(["message", "hint", "open", "run", "pending"]), text: z.string().max(20_000).optional(), workspace: Workspace.optional() })
     .parse(req.body);
   const state = S.loadState(id);
   const q = getQuestion(state.questionId);
@@ -239,6 +287,10 @@ app.post("/api/sessions/:id/chat", async (req, reply) => {
       S.appendTranscript(id, { role: "event", text: `The candidate ran their code. ${last ? summarizeRun(last) : ""} React briefly if useful.` });
       break;
     }
+    case "pending":
+      // An event (e.g. moving to the next part) is waiting at the end of the transcript; the interviewer responds to it.
+      if (transcript.at(-1)?.role !== "event") return reply.send({ skipped: true });
+      break;
     case "message":
       if (!body.text?.trim()) throw Object.assign(new Error("Empty message"), { statusCode: 400 });
       S.appendTranscript(id, { role: "candidate", text: body.text.trim() });

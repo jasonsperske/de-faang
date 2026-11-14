@@ -1,0 +1,18 @@
+{
+  "public": [
+    {"name": "example", "args": [["super", "superman", "man"]], "expected": ["superman"]},
+    {"name": "words can be reused", "args": [["a", "aa", "aaa", "b", "ab", "ba", "c"]], "expected": ["aa", "aaa", "ab", "ba"]},
+    {"name": "three pieces", "args": [["super", "superman", "man", "power", "manpower", "supermanpower", "cat"]], "expected": ["superman", "manpower", "supermanpower"]}
+  ],
+  "hidden": [
+    {"name": "empty list", "args": [[]], "expected": []},
+    {"name": "no compound words", "args": [["cat", "dog", "bird"]], "expected": []},
+    {"name": "a word is not a piece of itself", "args": [["ab", "ab"]], "expected": []},
+    {"name": "duplicate compound listed once", "args": [["a", "b", "ab", "ab"]], "expected": ["ab"]},
+    {"name": "same piece many times", "args": [["na", "nana", "nanana", "banana", "ba"]], "expected": ["nana", "nanana", "banana"]},
+    {"name": "greedy longest prefix fails", "args": [["abc", "ab", "cd", "abcd"]], "expected": ["abcd"]},
+    {"name": "prefix without a full split", "args": [["cat", "cats", "dog", "catsdog", "catdog", "catsdogcat", "catsdo"]], "expected": ["catsdog", "catdog", "catsdogcat"]},
+    {"name": "long word from one piece", "args": [["ab", "abababababababababababababababababababababababababababababababababababababababababababababababababab"]], "expected": ["abababababababababababababababababababababababababababababababababababababababababababababababababab"]},
+    {"name": "many overlapping splits", "args": [["a", "aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaaa", "aaaaaaaa", "aaaaaaaaa", "aaaaaaaaaa", "aaaaaaaaaaa", "aaaaaaaaaaaa", "aaaaaaaaaaaaa", "aaaaaaaaaaaaaa", "aaaaaaaaaaaaaaa", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab"]], "expected": ["aa", "aaa", "aaaa", "aaaaa", "aaaaaa", "aaaaaaa", "aaaaaaaa", "aaaaaaaaa", "aaaaaaaaaa", "aaaaaaaaaaa", "aaaaaaaaaaaa", "aaaaaaaaaaaaa", "aaaaaaaaaaaaaa", "aaaaaaaaaaaaaaa"]}
+  ]
+}

@@ -1,0 +1,4 @@
+{
+  "public": [{ "name": "example", "args": [[1, 2, 3]], "expected": 6 }],
+  "hidden": [{ "name": "empty", "args": [[]], "expected": 0 }]
+}

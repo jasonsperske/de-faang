@@ -17,14 +17,20 @@ for (const q of qs.values()) {
   if (q.meta.type === "coding") {
     if (!q.reference) problems.push("missing reference.py");
     else {
-      const cases = [...q.tests!.public.map((t) => ({ kind: "public" as const, test: t })), ...q.tests!.hidden.map((t) => ({ kind: "hidden" as const, test: t }))];
-      const r = await runCases(q, "python", q.reference, cases, { withReference: false });
-      if (!r.ok) problems.push(`reference failed to run: ${r.compileError}`);
-      for (const c of r.cases) if (!c.passed) problems.push(`reference fails ${c.kind} case "${c.name ?? c.index}": got ${JSON.stringify(c.output)} ${c.error ?? ""}`);
+      for (const p of q.parts) {
+        const where = q.multipart ? `part ${p.index + 1} (${p.id}) ` : "";
+        const cases = [...p.tests.public.map((t) => ({ kind: "public" as const, test: t })), ...p.tests.hidden.map((t) => ({ kind: "hidden" as const, test: t }))];
+        if (!p.tests.public.length) problems.push(`${where}has no public tests`);
+        const r = await runCases(q, "python", q.reference, cases, { withReference: false, part: p.index });
+        if (!r.ok) problems.push(`${where}reference failed to run: ${r.compileError}`);
+        for (const c of r.cases) if (!c.passed) problems.push(`${where}reference fails ${c.kind} case "${c.name ?? c.index}": got ${JSON.stringify(c.output)} ${c.error ?? ""}`);
+      }
     }
+    for (const l of ["python", "javascript", "typescript"] as const) if (!q.languages.includes(l)) problems.push(`not available in ${l} (add a starter file or a typed signature)`);
   }
   failed ||= problems.length > 0;
-  console.log(`${problems.length ? "✗" : "✓"} ${q.meta.id}${problems.map((p) => `\n    - ${p}`).join("")}`);
+  const parts = q.multipart ? ` (${q.parts.length} parts)` : "";
+  console.log(`${problems.length ? "✗" : "✓"} ${q.meta.id}${parts}${problems.map((p) => `\n    - ${p}`).join("")}`);
 }
 console.log(`\n${qs.size} questions checked.`);
 process.exit(failed ? 1 : 0);

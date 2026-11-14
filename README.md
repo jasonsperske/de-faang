@@ -9,6 +9,7 @@ Take the fear out of FAANG interviews. **de-faang** runs realistic coding and sy
   - **Standard:** sample tests visible, expected output for your custom inputs, and hints only when you ask.
   - **Coach:** proactive hints, reactions to every test run, and coaching on interview technique.
   - **Verbosity:** terse, normal, or detailed (for both the chat and the report).
+- **Multipart questions.** Later parts are revealed only when you hand in the current one, like a real round where the interviewer says "now let's extend this". Your code carries over between parts.
 - **Follow-up questions** after you submit, answered in writing.
 - **Evaluation packet → rubric scorecard.** Per-dimension 1–4 scores with quoted evidence, a hire/no-hire signal, strengths, improvements, a model answer sketch, and curated resource links.
 
@@ -81,9 +82,34 @@ questions/system-design/<id>/
 - **Function questions:** each test is `{ "args": [arg1, arg2], "expected": ... }`. Entry-point names can differ per language (`two_sum` vs `twoSum`).
 - **Class questions** (e.g. LRU cache) use the LeetCode convention: `{ "ops": ["LRUCache", "put", "get"], "args": [[2], [1, 1], [1]], "expected": [null, null, 1] }`.
 - **Typed signature (Java, C++, C, Go, Rust):** compiled languages need types. Add `"params": [{ "name": "nums", "type": "int[]" }, { "name": "target", "type": "int" }], "returns": "int[]"` to a function signature, or `"init": [...]` (constructor parameters) and `"methods": { "get": { "params": [...], "returns": "int" } }` to a class signature. Types are `int`, `long`, `double`, `bool`, `string`, any of those with `[]` or `[][]`, and `void`. Starters, entry names and harnesses for every compiled language are generated from this, following LeetCode conventions: `class Solution` in Java/C++, `impl Solution` in Rust, a plain function in Go and C with `(pointer, size)` array parameters and `returnSize` outputs in C, `Constructor` plus capitalised methods for Go classes, and `lRUCacheCreate/Get/Free` functions for C classes. C supports arrays up to `[][]` (`string[]` for strings). A question without types is offered only in Python, JavaScript and TypeScript.
+- **Entry names:** only `javascript` is required; Python defaults to its snake_case form and TypeScript to the same name. Without starter files, starters for every language are generated from the typed signature.
 - **`signature.compare`:** `exact` (the default; floats compared with a tolerance) or `unordered`, which ignores top-level array order.
+- **Multipart questions** replace `signature` with a `parts` list. Copy `questions/templates/multipart-coding/` to start one (see below).
 - **Rubrics** live in `rubrics/*.json` (weighted dimensions with 1–4 level descriptors).
 - **Resources** live in `resources/resources.json`. The evaluator can link **only** to ids in this library, so links can't be hallucinated.
+
+## Multipart questions
+
+```
+questions/coding/<id>/
+  question.json      "parts": [{ id, title, durationMinutes, signature, interviewer }, ...]
+  prompt.md          shared introduction, visible from the start
+  reference.py       every part's function or class
+  parts/<part-id>/
+    prompt.md        revealed when the candidate reaches this part
+    tests.json       this part's public and hidden tests
+```
+
+Each part has its own typed signature (required, so every language works), tests, and private interviewer notes (approach, hint ladder, pitfalls). `questions/coding/anagram-pairs-and-compound-words/` is a worked example; `questions/templates/multipart-coding/` is a skeleton that validates as soon as you copy it.
+
+During a round:
+
+- **Run** tests the current part. Custom inputs use the current part's signature.
+- **Finish part N** runs the current part's public and hidden tests, saves them (`runs/part-N-submit.json`, `evidence/part-N-*`), reveals the next part, and adds its stub to your code in every language. Java and C++ methods go inside your existing `class Solution`, Rust gets another `impl Solution` block, and other languages get a new function at the end. If your code already defines the entry point (e.g. a later part that extends the same class), it's left alone.
+- **Submit** (or **End round** before the last part) grades every part reached against your final code. Unreached parts stay hidden.
+- The interviewer knows every part, so it can pace the round, but it won't mention a part before you reach it. The evaluation packet records how far you got and when each part was handed in.
+
+Limitation: Go class questions use LeetCode's `Constructor` name, so two parts that are *different* Go classes would clash. A later part that extends the same class works.
 
 ## Architecture
 
@@ -92,8 +118,8 @@ web/      React + Vite UI (Monaco, Excalidraw, react-markdown)
 server/   Fastify API
   llm/          provider interface → Claude (Anthropic SDK) / Codex + Muse (OpenAI Responses API; Muse via
                 Meta's api.meta.ai/v1) / Gemini (@google/genai) / mock. All stream chat and return schema-constrained JSON.
-  runner/       harnesses (harness.ts for Python/JS/TS, typed.ts for compiled languages),
-                Docker/local executor, result comparison
+  runner/       harnesses (harness.ts for Python/JS/TS, typed.ts for compiled languages), starters.ts
+                (generated starters, multipart stubs), Docker/local executor, result comparison
   interviewer.ts  persona and strictness prompts, workspace snapshots
   evaluator.ts    packet assembly, rubric scoring, report rendering
   sessions.ts     session-folder storage
@@ -107,7 +133,7 @@ Claude requests enable server-side refusal fallbacks (`fallbacks: "default"`), s
 ## Tests
 
 ```bash
-npm test                                  # runner tests (local runner) + compiled-language tests (Docker; skipped without it)
+npm test                                  # runner + multipart tests (local runner) + compiled-language tests (Docker; skipped without it)
 DEFAANG_TEST_RUNNER=docker npm test       # same tests through the Docker sandbox
 npm run typecheck
 ```

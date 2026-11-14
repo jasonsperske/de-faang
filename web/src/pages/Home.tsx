@@ -73,7 +73,9 @@ export function Home() {
                   </span>
                 ))}
               </div>
-              <div className="muted small">~{q.durationMinutes} min</div>
+              <div className="muted small">
+                ~{q.durationMinutes} min{q.parts ? ` · ${q.parts} parts` : ""}
+              </div>
             </button>
           ))}
         </div>
@@ -149,7 +151,7 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>{q.title}</h2>
         <p className="muted">
-          {q.type === "coding" ? "Coding" : "System design"} · {q.difficulty} · about {q.durationMinutes} minutes
+          {q.type === "coding" ? "Coding" : "System design"} · {q.difficulty} · about {q.durationMinutes} minutes{q.parts ? ` · ${q.parts} parts, revealed one at a time` : ""}
         </p>
 
         <label className="field-label">Interviewer</label>

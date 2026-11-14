@@ -41,6 +41,8 @@ export interface QuestionSummary {
   durationMinutes: number;
   /** Languages the question can be solved in (coding questions only). */
   languages?: Language[];
+  /** Number of parts for multipart questions (absent for single-part questions). */
+  parts?: number;
 }
 
 export type TestArgs = unknown[];
@@ -56,6 +58,8 @@ export interface TestCase {
 
 export interface CaseResult {
   index: number;
+  /** 0-based part index, for multipart questions. */
+  part?: number;
   name?: string;
   kind: "public" | "hidden" | "custom";
   args: unknown;
@@ -106,12 +110,28 @@ export interface SessionState {
   hintsRequested: number;
   runs: number;
   code?: Partial<Record<Language, string>>;
+  /** Multipart questions: index of the part the candidate is working on (0-based). */
+  part?: number;
+  /** Multipart questions: when each finished part was handed in and how its tests went. */
+  partResults?: { part: number; at: string; passed: number; total: number }[];
   design?: DesignWorkspace;
   followUpAnswers?: string[];
 }
 
-export interface QuestionView extends QuestionSummary {
+export interface PartView {
+  index: number;
+  id: string;
+  title: string;
   prompt: string;
+}
+
+export interface QuestionView extends QuestionSummary {
+  /** For multipart questions, the shared introduction; each part's prompt is in `partViews`. */
+  prompt: string;
+  /** Multipart: the parts revealed so far (later parts stay hidden until reached). */
+  partViews?: PartView[];
+  /** Multipart: index of the current part. Tests and signature below belong to it. */
+  part?: number;
   starter?: Partial<Record<Language, string>>;
   publicTests?: TestCase[]; // omitted in strict mode
   signature?: { kind: "function" | "class"; entry: Partial<Record<Language, string>> };
@@ -124,6 +144,8 @@ export interface SessionView {
   transcript: ChatEntry[];
   folder: string;
   lastSubmit?: RunResult;
+  /** Multipart: test results of the part the candidate just finished. */
+  lastPartResult?: RunResult;
 }
 
 export type HireDecision = "strong_hire" | "hire" | "lean_hire" | "lean_no_hire" | "no_hire";

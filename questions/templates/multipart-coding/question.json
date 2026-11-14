@@ -1,0 +1,49 @@
+{
+  "id": "my-multipart-question",
+  "title": "TODO: Question title",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["TODO", "multipart"],
+  "rubric": "coding",
+  "parts": [
+    {
+      "id": "part-one",
+      "title": "TODO: Part 1 title",
+      "durationMinutes": 15,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "partOne" },
+        "params": [{ "name": "nums", "type": "int[]" }],
+        "returns": "long"
+      },
+      "interviewer": {
+        "approach": "TODO: the expected approach and its complexity.",
+        "hints": ["TODO: smallest nudge", "TODO: bigger nudge", "TODO: nearly the answer"],
+        "pitfalls": ["TODO: a common mistake"]
+      }
+    },
+    {
+      "id": "part-two",
+      "title": "TODO: Part 2 title",
+      "durationMinutes": 30,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "partTwo" },
+        "compare": "exact",
+        "params": [{ "name": "nums", "type": "int[]" }],
+        "returns": "int"
+      },
+      "interviewer": {
+        "approach": "TODO: the expected approach and its complexity.",
+        "hints": ["TODO: smallest nudge", "TODO: bigger nudge"],
+        "pitfalls": ["TODO: a common mistake"]
+      }
+    }
+  ],
+  "followUps": ["TODO: a written follow-up question asked after the candidate submits."],
+  "interviewer": {
+    "approach": "TODO (optional): notes about the round as a whole, e.g. how to pace the parts."
+  },
+  "resources": ["big-o-cheatsheet"]
+}

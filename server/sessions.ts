@@ -65,6 +65,10 @@ export function createSession(questionId: string, config: SessionConfig): Sessio
   if (q.meta.type === "coding") {
     state.code = { ...q.starter };
     state.config.language ??= "python";
+    if (q.multipart) {
+      state.part = 0;
+      state.partResults = [];
+    }
   } else {
     state.design = { markdown: "## Requirements\n\n## Estimates\n\n## API\n\n## Data model\n\n## High-level design\n\n## Deep dives & tradeoffs\n" };
   }
@@ -128,13 +132,29 @@ export interface RunRecord {
   code: string;
   result: RunResult;
   submit?: boolean;
+  /** Multipart: the part this run tested (0-based). */
+  part?: number;
+  /** Multipart: the candidate handed in this part and moved on to the next one. */
+  partSubmit?: boolean;
 }
 
-export function recordRun(state: SessionState, language: Language, code: string, result: RunResult, submit = false): RunRecord {
-  if (!submit) state.runs += 1;
-  const n = state.runs + (submit ? 1 : 0);
-  const rec: RunRecord = { n, at: new Date().toISOString(), language, code, result, submit };
-  const name = submit ? "submit.json" : `run-${String(n).padStart(3, "0")}.json`;
+/**
+ * Saves a run under runs/: run-NNN.json for Run, part-N-submit.json when a multipart part is
+ * handed in, and submit.json for the final submission.
+ */
+export function recordRun(
+  state: SessionState,
+  language: Language,
+  code: string,
+  result: RunResult,
+  submit = false,
+  opts: { part?: number; partSubmit?: boolean } = {},
+): RunRecord {
+  const counted = !submit && !opts.partSubmit;
+  if (counted) state.runs += 1;
+  const n = state.runs + (counted ? 0 : 1);
+  const rec: RunRecord = { n, at: new Date().toISOString(), language, code, result, submit, ...opts };
+  const name = submit ? "submit.json" : opts.partSubmit ? `part-${(opts.part ?? 0) + 1}-submit.json` : `run-${String(n).padStart(3, "0")}.json`;
   writeJson(path.join(SESSIONS_DIR, state.id, "runs", name), rec);
   saveState(state);
   return rec;
@@ -145,8 +165,14 @@ export function listRuns(id: string): RunRecord[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .sort()
-    .map((f) => readJson<RunRecord>(path.join(dir, f)));
+    .map((f) => readJson<RunRecord>(path.join(dir, f)))
+    .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/** Multipart: the results recorded when the candidate handed in part `part` (0-based). */
+export function partSubmit(id: string, part: number): RunResult | undefined {
+  const f = path.join(sessionDir(id), "runs", `part-${part + 1}-submit.json`);
+  return fs.existsSync(f) ? readJson<RunRecord>(f).result : undefined;
 }
 
 export function lastSubmit(id: string): RunResult | undefined {

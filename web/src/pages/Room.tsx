@@ -18,7 +18,8 @@ export function Room({ id }: { id: string }) {
 
   if (error) return <div className="center"><div className="banner error">{error}</div><a href="#/">Back</a></div>;
   if (!view) return <div className="center muted">Loading…</div>;
-  return <RoomInner key={view.session.status} view={view} reload={reload} />;
+  // Remount when the round moves on (submit, or the next part of a multipart question).
+  return <RoomInner key={`${view.session.status}-${view.session.part ?? 0}`} view={view} reload={reload} />;
 }
 
 function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) {
@@ -33,7 +34,10 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
   const [language, setLanguage] = useState<Language>(session.config.language ?? "python");
   const [codeByLang, setCodeByLang] = useState<Partial<Record<Language, string>>>({ ...question.starter, ...session.code });
   const [submitting, setSubmitting] = useState(false);
-  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [confirm, setConfirm] = useState<null | "submit" | "part">(null);
+  const part = question.part ?? 0;
+  const partCount = question.parts ?? 1;
+  const hasNextPart = isCoding && part < partCount - 1;
   const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Counts interviewer replies; the collapsed chat rail shows a dot for replies it hasn't shown yet.
@@ -81,7 +85,22 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
     } catch (e) {
       setSubmitError((e as Error).message);
       setSubmitting(false);
-      setConfirmSubmit(false);
+      setConfirm(null);
+    }
+  };
+
+  /** Multipart: hand in the current part and reveal the next one. */
+  const finishPart = async () => {
+    setSubmitting(true);
+    setSubmitError(null);
+    clearTimeout(saveTimer.current);
+    try {
+      await api.nextPart(session.id, { ...codeRef.current });
+      reload();
+    } catch (e) {
+      setSubmitError((e as Error).message);
+      setSubmitting(false);
+      setConfirm(null);
     }
   };
 
@@ -100,18 +119,39 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
         {status === "in_progress" && (
           <>
             <span className={`save ${saveState}`}>{saveState === "saved" ? "saved" : saveState === "saving" ? "saving…" : "unsaved"}</span>
-            {confirmSubmit ? (
+            {confirm === "part" ? (
               <>
-                <span className="small nowrap">Submit? No edits after.</span>
-                <button className="ghost small" onClick={() => setConfirmSubmit(false)}>
+                <span className="small nowrap">Hand in part {part + 1}? Its hidden tests run now.</span>
+                <button className="ghost small" onClick={() => setConfirm(null)}>
+                  Keep working
+                </button>
+                <button className="primary small" onClick={finishPart} disabled={submitting}>
+                  {submitting ? "Running tests…" : `Yes, on to part ${part + 2}`}
+                </button>
+              </>
+            ) : confirm === "submit" ? (
+              <>
+                <span className="small nowrap">
+                  {hasNextPart ? `End the round now? Parts ${part + 2}–${partCount} won't be shown.` : "Submit? No edits after."}
+                </span>
+                <button className="ghost small" onClick={() => setConfirm(null)}>
                   Keep working
                 </button>
                 <button className="primary small" onClick={submit} disabled={submitting}>
                   {submitting ? (isCoding ? "Running hidden tests…" : "Submitting…") : "Yes, submit"}
                 </button>
               </>
+            ) : hasNextPart ? (
+              <>
+                <button className="ghost small" onClick={() => setConfirm("submit")} title="Submit without doing the remaining parts">
+                  End round
+                </button>
+                <button className="primary small" onClick={() => setConfirm("part")}>
+                  Finish part {part + 1} →
+                </button>
+              </>
             ) : (
-              <button className="primary small" onClick={() => setConfirmSubmit(true)}>
+              <button className="primary small" onClick={() => setConfirm("submit")}>
                 Submit
               </button>
             )}
@@ -140,7 +180,7 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
             </button>
             {isCoding && !strict && (
               <button className={leftTab === "tests" ? "on" : ""} onClick={() => setLeftTab("tests")}>
-                Sample tests
+                {question.partViews ? `Part ${part + 1} tests` : "Sample tests"}
               </button>
             )}
             {question.followUps && (
@@ -152,7 +192,7 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
             <CollapseButton side="left" onClick={collapse} />
           </div>
           <div className="left-body">
-            {leftTab === "prompt" && <Markdown>{question.prompt}</Markdown>}
+            {leftTab === "prompt" && (question.partViews ? <PartsPrompt question={question} /> : <Markdown>{question.prompt}</Markdown>)}
             {leftTab === "tests" && (
               <div className="sample-tests">
                 {question.publicTests?.map((t, i) => (
@@ -193,7 +233,7 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
               language={language}
               code={codeByLang[language] ?? ""}
               readOnly={readOnly}
-              lastSubmit={view.lastSubmit}
+              lastSubmit={view.lastSubmit ?? view.lastPartResult}
               onLanguage={(l) => {
                 setLanguage(l);
                 scheduleSave();
@@ -227,6 +267,32 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
   );
 }
 
+/** Multipart prompt: the introduction, every part reached so far (newest open), and the parts still locked. */
+function PartsPrompt({ question }: { question: SessionView["question"] }) {
+  const parts = question.partViews ?? [];
+  const current = question.part ?? 0;
+  const total = question.parts ?? parts.length;
+  return (
+    <div className="parts-prompt">
+      <Markdown>{question.prompt}</Markdown>
+      {parts.map((p) => (
+        <details key={p.id} className={`part ${p.index === current ? "current" : "done"}`} open={p.index === current}>
+          <summary>
+            <span className="part-no">Part {p.index + 1}</span> {p.title}
+            {p.index < current && <span className="muted small"> · handed in</span>}
+          </summary>
+          <Markdown>{p.prompt}</Markdown>
+        </details>
+      ))}
+      {Array.from({ length: total - parts.length }, (_, i) => (
+        <div key={i} className="part locked muted small">
+          <span className="part-no">Part {parts.length + i + 1}</span> unlocks when you finish part {parts.length + i}.
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function RoomHeader({ view, children }: { view: SessionView; children?: React.ReactNode }) {
   const { session, question } = view;
   return (
@@ -238,6 +304,11 @@ function RoomHeader({ view, children }: { view: SessionView; children?: React.Re
         <strong>{question.title}</strong>
         <span className={`diff ${question.difficulty}`}>{question.difficulty}</span>
         <span className="badge">{STRICTNESS[session.config.strictness].label}</span>
+        {question.parts && session.status === "in_progress" && (
+          <span className="badge">
+            Part {(question.part ?? 0) + 1} of {question.parts}
+          </span>
+        )}
         <Timer start={session.createdAt} end={session.submittedAt} limit={question.durationMinutes} />
       </div>
       <div className="spacer" />

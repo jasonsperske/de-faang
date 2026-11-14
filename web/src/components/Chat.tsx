@@ -53,13 +53,18 @@ export const Chat = forwardRef<ChatHandle, Props>(function Chat({ session, initi
 
   useImperativeHandle(ref, () => ({ trigger: (kind, text) => void send(kind, text) }), [send]);
 
-  // The interviewer opens the round.
+  // The interviewer opens the round, or responds to an event that is still waiting for a reply
+  // (e.g. the candidate just moved on to the next part of a multipart question).
   useEffect(() => {
-    if (!opened.current && initial.length === 0 && session.status === "in_progress") {
+    if (opened.current || session.status !== "in_progress") return;
+    if (initial.length === 0) {
       opened.current = true;
       void send("open");
+    } else if (initial[initial.length - 1].role === "event") {
+      opened.current = true;
+      void send("pending");
     }
-  }, [initial.length, session.status, send]);
+  }, [initial, session.status, send]);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });

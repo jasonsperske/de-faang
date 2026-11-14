@@ -36,12 +36,13 @@ export const api = {
   run: (id: string, body: { language: Language; code: string; includePublic: boolean; custom: TestCase[] }) =>
     req<{ result: RunResult; run: number; summary: string }>("POST", `/api/sessions/${id}/run`, body),
   submit: (id: string, ws: Workspace) => req<SessionView>("POST", `/api/sessions/${id}/submit`, ws),
+  nextPart: (id: string, ws: CodeWorkspace) => req<SessionView>("POST", `/api/sessions/${id}/next-part`, ws),
   saveFollowUps: (id: string, answers: string[]) => req<{ ok: true }>("POST", `/api/sessions/${id}/followups`, { answers }),
   evaluate: (id: string) => req<{ evaluation: Evaluation; markdown: string }>("POST", `/api/sessions/${id}/evaluate`),
   report: (id: string) => req<{ evaluation: Evaluation; markdown: string; submit?: RunResult }>("GET", `/api/sessions/${id}/report`),
 };
 
-export type ChatKind = "message" | "hint" | "open" | "run";
+export type ChatKind = "message" | "hint" | "open" | "run" | "pending";
 
 /** Streams an interviewer reply over server-sent events. */
 export async function streamChat(

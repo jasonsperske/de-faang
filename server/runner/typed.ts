@@ -853,6 +853,22 @@ static void __defaang_str(const char* s) {
 // -------------------------------------------------------------------------------------- starters
 
 export function typedStarter(lang: TypedLanguage, sig: TypedSignature, entry: string): string {
+  const p = typedStarterPieces(lang, sig, entry);
+  return p.header + p.body;
+}
+
+/**
+ * A starter split into a file header (package line, imports, notes) and the body for this signature.
+ * For Java and C++ function questions `member` is the method alone, so a multipart question can add
+ * a later part's method to an existing `class Solution`.
+ */
+export interface StarterPieces {
+  header: string;
+  body: string;
+  member?: string;
+}
+
+export function typedStarterPieces(lang: TypedLanguage, sig: TypedSignature, entry: string): StarterPieces {
   const t = (s: string) => typeOf(lang, parseType(s));
   const isVoid = (s: string) => parseType(s).base === "void";
   const params = (ps: Param[]) => ps.map((p) => (lang === "go" ? `${p.name} ${t(p.type)}` : lang === "rust" ? `${paramName("rust", p.name)}: ${t(p.type)}` : lang === "c" ? cParams(p) : lang === "cpp" && parseType(p.type).dims ? `${t(p.type)}& ${p.name}` : `${t(p.type)} ${p.name}`)).join(", ");
@@ -860,30 +876,38 @@ export function typedStarter(lang: TypedLanguage, sig: TypedSignature, entry: st
 
   switch (lang) {
     case "go": {
-      if (sig.kind === "function") return `package main\n\nfunc ${entry}(${params(sig.params!)})${isVoid(sig.returns!) ? "" : " " + t(sig.returns!)} {\n\n}\n`;
+      const header = "package main\n\n";
+      if (sig.kind === "function") return { header, body: `func ${entry}(${params(sig.params!)})${isVoid(sig.returns!) ? "" : " " + t(sig.returns!)} {\n\n}\n` };
       const ms = methods.map(([op, m]) => `func (this *${entry}) ${methodName("go", entry, op)}(${params(m.params)})${isVoid(m.returns) ? "" : " " + t(m.returns)} {\n\n}`);
-      return `package main\n\ntype ${entry} struct {\n\n}\n\nfunc Constructor(${params(sig.init!)}) ${entry} {\n\n}\n\n${ms.join("\n\n")}\n`;
+      return { header, body: `type ${entry} struct {\n\n}\n\nfunc Constructor(${params(sig.init!)}) ${entry} {\n\n}\n\n${ms.join("\n\n")}\n` };
     }
     case "java": {
-      if (sig.kind === "function") return `import java.util.*;\n\nclass Solution {\n    public ${t(sig.returns!)} ${entry}(${params(sig.params!)}) {\n\n    }\n}\n`;
+      const header = "import java.util.*;\n\n";
+      if (sig.kind === "function") {
+        const member = `    public ${t(sig.returns!)} ${entry}(${params(sig.params!)}) {\n\n    }\n`;
+        return { header, body: `class Solution {\n${member}}\n`, member };
+      }
       const ms = methods.map(([op, m]) => `    public ${t(m.returns)} ${op}(${params(m.params)}) {\n\n    }`);
-      return `import java.util.*;\n\nclass ${entry} {\n\n    public ${entry}(${params(sig.init!)}) {\n\n    }\n\n${ms.join("\n\n")}\n}\n`;
+      return { header, body: `class ${entry} {\n\n    public ${entry}(${params(sig.init!)}) {\n\n    }\n\n${ms.join("\n\n")}\n}\n` };
     }
     case "cpp": {
       const header = "// The standard library is already included and `using namespace std;` is in effect.\n\n";
-      if (sig.kind === "function") return `${header}class Solution {\npublic:\n    ${t(sig.returns!)} ${entry}(${params(sig.params!)}) {\n\n    }\n};\n`;
+      if (sig.kind === "function") {
+        const member = `    ${t(sig.returns!)} ${entry}(${params(sig.params!)}) {\n\n    }\n`;
+        return { header, body: `class Solution {\npublic:\n${member}};\n`, member };
+      }
       const ms = methods.map(([op, m]) => `    ${t(m.returns)} ${op}(${params(m.params)}) {\n\n    }`);
-      return `${header}class ${entry} {\npublic:\n    ${entry}(${params(sig.init!)}) {\n\n    }\n\n${ms.join("\n\n")}\n};\n`;
+      return { header, body: `class ${entry} {\npublic:\n    ${entry}(${params(sig.init!)}) {\n\n    }\n\n${ms.join("\n\n")}\n};\n` };
     }
     case "rust": {
       const ret = (s: string) => (isVoid(s) ? "" : ` -> ${t(s)}`);
       if (sig.kind === "function")
-        return `// \`struct Solution;\` is already declared.\nimpl Solution {\n    pub fn ${entry}(${params(sig.params!)})${ret(sig.returns!)} {\n\n    }\n}\n`;
+        return { header: "// `struct Solution;` is already declared.\n", body: `impl Solution {\n    pub fn ${entry}(${params(sig.params!)})${ret(sig.returns!)} {\n\n    }\n}\n` };
       const ms = methods.map(([op, m]) => `    fn ${methodName("rust", entry, op)}(&mut self${m.params.length ? ", " + params(m.params) : ""})${ret(m.returns)} {\n\n    }`);
-      return `struct ${entry} {\n\n}\n\nimpl ${entry} {\n    fn new(${params(sig.init!)}) -> Self {\n\n    }\n\n${ms.join("\n\n")}\n}\n`;
+      return { header: "", body: `struct ${entry} {\n\n}\n\nimpl ${entry} {\n    fn new(${params(sig.init!)}) -> Self {\n\n    }\n\n${ms.join("\n\n")}\n}\n` };
     }
     case "c": {
-      const header = "// Standard C headers (stdio, stdlib, string, stdbool, limits, math, ...) are already included.\n";
+      const header = "// Standard C headers (stdio, stdlib, string, stdbool, limits, math, ...) are already included.\n\n";
       const fn = (ret: string, name: string, ps: string[]) => `${t(ret)} ${name}(${ps.filter(Boolean).join(", ")}) {\n\n}`;
       const note = (ret: string) => {
         const r = parseType(ret);
@@ -891,10 +915,10 @@ export function typedStarter(lang: TypedLanguage, sig: TypedSignature, entry: st
         if (r.dims === 2) return "/**\n * Note: the returned array and its rows must be malloced. Set *returnSize to the number of rows\n * and *returnColumnSizes to a malloced array of each row's length.\n */\n";
         return "";
       };
-      if (sig.kind === "function") return `${header}\n${note(sig.returns!)}${fn(sig.returns!, entry, [params(sig.params!), ...cReturnParams(parseType(sig.returns!))])}\n`;
+      if (sig.kind === "function") return { header, body: `${note(sig.returns!)}${fn(sig.returns!, entry, [params(sig.params!), ...cReturnParams(parseType(sig.returns!))])}\n` };
       const prefix = lowerFirst(entry);
       const ms = methods.map(([op, m]) => note(m.returns) + fn(m.returns, methodName("c", entry, op), [`${entry}* obj`, params(m.params), ...cReturnParams(parseType(m.returns))]));
-      return `${header}\ntypedef struct {\n\n} ${entry};\n\n${entry}* ${prefix}Create(${params(sig.init!)}) {\n\n}\n\n${ms.join("\n\n")}\n\nvoid ${prefix}Free(${entry}* obj) {\n\n}\n`;
+      return { header, body: `typedef struct {\n\n} ${entry};\n\n${entry}* ${prefix}Create(${params(sig.init!)}) {\n\n}\n\n${ms.join("\n\n")}\n\nvoid ${prefix}Free(${entry}* obj) {\n\n}\n` };
     }
   }
 }

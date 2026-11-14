@@ -31,10 +31,54 @@ const VERBOSITY_RULES: Record<Verbosity, string> = {
   detailed: "You may give fuller explanations when useful (a few short paragraphs at most), but remain conversational. Use small code snippets or bullet lists only when they genuinely help.",
 };
 
+/** The question and private notes for a multipart question: every part, so the interviewer can pace the round. */
+function multipartSection(q: Question): string {
+  const n = q.parts.length;
+  const overall = q.meta.interviewer;
+  return `=== THE QUESTION ===
+This is a MULTIPART question with ${n} parts. The candidate sees the introduction and only the parts they have reached; each later part is revealed when they hand in the previous one. The workspace snapshot says which part they are on. Never reveal, describe, or hint at a part they haven't reached, and don't say how the parts relate until then. You may tell them how many parts there are.
+
+Introduction (shown to the candidate from the start):
+${q.prompt}
+
+${q.parts
+  .map(
+    (p) => `--- PART ${p.index + 1} of ${n}: ${p.title}${p.durationMinutes ? ` (about ${p.durationMinutes} min)` : ""} ---
+Prompt shown to the candidate:
+${p.prompt}
+
+PRIVATE NOTES for part ${p.index + 1} (never quote these directly)
+Expected approach: ${p.interviewer.approach}
+Hint ladder (smallest nudge first):
+${p.interviewer.hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+Common pitfalls:
+${p.interviewer.pitfalls.map((x) => `- ${x}`).join("\n") || "- (none listed)"}`,
+  )
+  .join("\n\n")}
+${overall.approach || overall.pitfalls.length ? `\nNOTES ON THE WHOLE ROUND (private)\n${overall.approach}${overall.pitfalls.map((x) => `\n- ${x}`).join("")}` : ""}
+
+Hints and probing questions should be about the CURRENT part. When the candidate moves on, you'll get an event; introduce the new part briefly in your own words (the full prompt is on their screen). Pace the round so they have a fair chance to reach every part: if they're well over a part's suggested time, encourage them to get something working and move on.`;
+}
+
 export function interviewerSystemPrompt(q: Question, state: SessionState): string {
   const { strictness, verbosity } = state.config;
   const notes = q.meta.interviewer;
   const isDesign = q.meta.type === "system-design";
+  const question = q.multipart
+    ? multipartSection(q)
+    : `=== THE QUESTION (as shown to the candidate) ===
+${q.prompt}
+
+=== PRIVATE INTERVIEWER NOTES (never quote these directly) ===
+Expected approach: ${notes.approach}
+
+Hint ladder (smallest nudge first):
+${notes.hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+
+Common pitfalls to watch for:
+${notes.pitfalls.map((p) => `- ${p}`).join("\n") || "- (none listed)"}
+${notes.facts.length ? `\nFACTS (reveal only when asked):\n${notes.facts.map((f) => `- ${f}`).join("\n")}` : ""}
+${notes.deepDives.length ? `\nDEEP-DIVE topics to probe:\n${notes.deepDives.map((d) => `- ${d}`).join("\n")}` : ""}`;
   return `You are an experienced interviewer at a top technology company, conducting a ${isDesign ? "system design" : "coding"} interview round in a practice tool called de-faang. The goal is realistic practice that takes the fear out of FAANG interviews.
 
 ${STRICTNESS_RULES[strictness]}
@@ -55,19 +99,7 @@ ${
     : "- When the candidate begins coding before stating an approach or its complexity, a real interviewer might ask them to explain first. Do so in standard and coach modes."
 }
 
-=== THE QUESTION (as shown to the candidate) ===
-${q.prompt}
-
-=== PRIVATE INTERVIEWER NOTES (never quote these directly) ===
-Expected approach: ${notes.approach}
-
-Hint ladder (smallest nudge first):
-${notes.hints.map((h, i) => `${i + 1}. ${h}`).join("\n")}
-
-Common pitfalls to watch for:
-${notes.pitfalls.map((p) => `- ${p}`).join("\n") || "- (none listed)"}
-${notes.facts.length ? `\nFACTS (reveal only when asked):\n${notes.facts.map((f) => `- ${f}`).join("\n")}` : ""}
-${notes.deepDives.length ? `\nDEEP-DIVE topics to probe:\n${notes.deepDives.map((d) => `- ${d}`).join("\n")}` : ""}
+${question}
 
 Follow-up questions are asked in writing after the candidate submits. Don't ask them during the round.`;
 }
@@ -78,17 +110,26 @@ export function elapsedMinutes(state: SessionState): number {
 
 export function summarizeRun(r: RunRecord): string {
   const res = r.result;
-  if (!res.ok) return `Run #${r.n} (${r.language}): failed to execute — ${(res.compileError ?? "").split("\n").slice(-3).join(" ").slice(0, 300)}`;
+  const label = r.partSubmit ? `Part ${(r.part ?? 0) + 1} hand-in` : r.submit ? "Final submission" : `Run #${r.n}${r.part !== undefined ? ` (part ${r.part + 1})` : ""}`;
+  if (!res.ok) return `${label} (${r.language}): failed to execute — ${(res.compileError ?? "").split("\n").slice(-3).join(" ").slice(0, 300)}`;
   const failing = res.cases.filter((c) => c.passed === false || c.error).slice(0, 3);
   const detail = failing
-    .map((c) => `  - ${c.kind} case ${c.name ?? c.index}: args=${JSON.stringify(c.args).slice(0, 200)} → ${c.error ? `error ${c.error.split("\n")[0]}` : `got ${JSON.stringify(c.output)?.slice(0, 120)}, expected ${JSON.stringify(c.expected)?.slice(0, 120)}`}`)
+    .map((c) => `  - ${c.part !== undefined && r.submit ? `part ${c.part + 1} ` : ""}${c.kind} case ${c.name ?? c.index}: args=${JSON.stringify(c.args).slice(0, 200)} → ${c.error ? `error ${c.error.split("\n")[0]}` : `got ${JSON.stringify(c.output)?.slice(0, 120)}, expected ${JSON.stringify(c.expected)?.slice(0, 120)}`}`)
     .join("\n");
   const custom = res.cases.filter((c) => c.kind === "custom").length;
-  return `Run #${r.n} (${r.language}): ${res.passed}/${res.total} graded cases passed${custom ? `, ${custom} custom input(s)` : ""}.${detail ? `\n${detail}` : ""}`;
+  return `${label} (${r.language}): ${res.passed}/${res.total} graded cases passed${custom ? `, ${custom} custom input(s)` : ""}.${detail ? `\n${detail}` : ""}`;
 }
 
 export function workspaceSnapshot(q: Question, state: SessionState, runs: RunRecord[]): string {
   const parts = [`Elapsed: ${elapsedMinutes(state)} of ${q.meta.durationMinutes} minutes. Hints requested so far: ${state.hintsRequested}.`];
+  if (q.multipart) {
+    const part = state.part ?? 0;
+    const p = q.parts[part];
+    const done = (state.partResults ?? []).map(
+      (r) => `part ${r.part + 1} handed in at minute ${Math.round((Date.parse(r.at) - Date.parse(state.createdAt)) / 60000)} (${r.passed}/${r.total} tests passed)`,
+    );
+    parts.push(`Current part: ${part + 1} of ${q.parts.length} ("${p.title}")${p.durationMinutes ? `, suggested ${p.durationMinutes} min` : ""}.${done.length ? ` Earlier: ${done.join("; ")}.` : ""}`);
+  }
   if (q.meta.type === "coding") {
     const lang = state.config.language ?? "python";
     const label = LANGUAGES.find((l) => l.id === lang)!.label;
@@ -98,7 +139,7 @@ export function workspaceSnapshot(q: Question, state: SessionState, runs: RunRec
       .map((l, i) => `${String(i + 1).padStart(3)}| ${l}`)
       .join("\n");
     parts.push(`Language: ${label}\nCurrent code:\n\`\`\`\n${numbered}\n\`\`\``);
-    const recent = runs.filter((r) => !r.submit).slice(-2);
+    const recent = runs.filter((r) => !r.submit && !r.partSubmit).slice(-2);
     parts.push(recent.length ? `Recent test runs:\n${recent.map(summarizeRun).join("\n")}` : "No test runs yet.");
   } else {
     parts.push(`Candidate notes (markdown):\n${state.design?.markdown?.trim() || "(empty)"}`);

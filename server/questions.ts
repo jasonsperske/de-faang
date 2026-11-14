@@ -4,15 +4,18 @@ import { z } from "zod";
 import type { Language, QuestionSummary, QuestionView, Strictness, TestCase } from "../shared/types.ts";
 import { LANGUAGES } from "../shared/types.ts";
 import { ROOT } from "./paths.ts";
-import { isTyped, parseType } from "./runner/signature.ts";
-import { defaultEntry, supportsLanguage, TYPED_LANGUAGES, typedStarter } from "./runner/typed.ts";
+import { isTyped, parseType, snake } from "./runner/signature.ts";
+import { addPartStub, generateStarter } from "./runner/starters.ts";
+import { defaultEntry, supportsLanguage, TYPED_LANGUAGES } from "./runner/typed.ts";
 
 export const QUESTIONS_DIR = path.join(ROOT, "questions");
 
 const LangRecord = z.object({
-  python: z.string(),
+  // JavaScript names the entry point; Python defaults to its snake_case form (for functions) and
+  // TypeScript to the JavaScript name.
+  python: z.string().optional(),
   javascript: z.string(),
-  typescript: z.string(),
+  typescript: z.string().optional(),
   // Optional overrides; by default derived from the JavaScript (or, for Rust, Python) name.
   go: z.string().optional(),
   c: z.string().optional(),
@@ -31,42 +34,66 @@ const TypeStr = z.string().refine((t) => {
 }, "Unknown type. Use int, long, double, bool, string (with [] for arrays) or void.");
 const Param = z.object({ name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), type: TypeStr });
 
-const QuestionMeta = z.object({
+const SignatureSchema = z.object({
+  kind: z.enum(["function", "class"]),
+  entry: LangRecord,
+  /** exact: deep equality. unordered: top-level array order is ignored. */
+  compare: z.enum(["exact", "unordered"]).default("exact"),
+  /**
+   * Types, needed for Go, C, C++, Rust and Java (see server/runner/signature.ts).
+   * function kind: params + returns. class kind: init (constructor params) + methods by op name.
+   */
+  params: z.array(Param).optional(),
+  returns: TypeStr.optional(),
+  init: z.array(Param).optional(),
+  methods: z.record(z.string(), z.object({ params: z.array(Param).default([]), returns: TypeStr.default("void") })).optional(),
+});
+type SignatureMeta = z.infer<typeof SignatureSchema>;
+/** A signature with an entry-point name for every language the question supports. */
+export type Signature = Omit<SignatureMeta, "entry"> & { entry: Partial<Record<Language, string>> };
+
+const PartNotes = z.object({ approach: z.string(), hints: z.array(z.string()), pitfalls: z.array(z.string()).default([]) });
+
+const PartMeta = z.object({
   id: z.string().regex(/^[a-z0-9-]+$/),
   title: z.string(),
-  type: z.enum(["coding", "system-design"]),
-  difficulty: z.enum(["easy", "medium", "hard"]),
-  durationMinutes: z.number().int().positive(),
-  tags: z.array(z.string()),
-  rubric: z.string(),
-  signature: z
-    .object({
-      kind: z.enum(["function", "class"]),
-      entry: LangRecord,
-      /** exact: deep equality. unordered: top-level array order is ignored. */
-      compare: z.enum(["exact", "unordered"]).default("exact"),
-      /**
-       * Types, needed for Go, C, C++, Rust and Java (see server/runner/signature.ts).
-       * function kind: params + returns. class kind: init (constructor params) + methods by op name.
-       */
-      params: z.array(Param).optional(),
-      returns: TypeStr.optional(),
-      init: z.array(Param).optional(),
-      methods: z.record(z.string(), z.object({ params: z.array(Param).default([]), returns: TypeStr.default("void") })).optional(),
-    })
-    .optional(),
-  followUps: z.array(z.string()).min(1),
-  /** Private notes for the interviewer LLM. Never sent to the browser. */
-  interviewer: z.object({
-    approach: z.string(),
-    hints: z.array(z.string()),
-    pitfalls: z.array(z.string()).default([]),
-    /** For system design: facts the interviewer reveals only when asked (scale, constraints). */
-    facts: z.array(z.string()).default([]),
-    deepDives: z.array(z.string()).default([]),
-  }),
-  resources: z.array(z.string()).default([]),
+  /** Suggested time for this part; the interviewer uses it for pacing. */
+  durationMinutes: z.number().int().positive().optional(),
+  signature: SignatureSchema.refine(isTyped, "Multipart questions need typed signatures (params/returns or init/methods)."),
+  /** Private interviewer notes for this part. */
+  interviewer: PartNotes,
 });
+
+const QuestionMeta = z
+  .object({
+    id: z.string().regex(/^[a-z0-9-]+$/),
+    title: z.string(),
+    type: z.enum(["coding", "system-design"]),
+    difficulty: z.enum(["easy", "medium", "hard"]),
+    durationMinutes: z.number().int().positive(),
+    tags: z.array(z.string()),
+    rubric: z.string(),
+    signature: SignatureSchema.optional(),
+    /**
+     * Multipart coding questions: the parts in order. Each has its own signature, tests
+     * (parts/<id>/tests.json), prompt (parts/<id>/prompt.md) and interviewer notes. Later parts are
+     * revealed only after the candidate hands in the current one.
+     */
+    parts: z.array(PartMeta).min(2).optional(),
+    followUps: z.array(z.string()).min(1),
+    /** Private notes for the interviewer LLM. Never sent to the browser. For multipart questions these cover the whole round. */
+    interviewer: z.object({
+      approach: z.string().default(""),
+      hints: z.array(z.string()).default([]),
+      pitfalls: z.array(z.string()).default([]),
+      /** For system design: facts the interviewer reveals only when asked (scale, constraints). */
+      facts: z.array(z.string()).default([]),
+      deepDives: z.array(z.string()).default([]),
+    }),
+    resources: z.array(z.string()).default([]),
+  })
+  .refine((m) => m.type !== "coding" || Boolean(m.signature) !== Boolean(m.parts), "A coding question needs either a signature or parts (not both).")
+  .refine((m) => !m.parts || new Set(m.parts.map((p) => p.id)).size === m.parts.length, "Part ids must be unique.");
 export type QuestionMeta = z.infer<typeof QuestionMeta>;
 
 const TestCaseSchema = z.object({
@@ -77,39 +104,110 @@ const TestCaseSchema = z.object({
 });
 const TestsFile = z.object({ public: z.array(TestCaseSchema), hidden: z.array(TestCaseSchema) });
 
+export interface Part {
+  index: number;
+  id: string;
+  title: string;
+  durationMinutes?: number;
+  /** For single-part questions this is the whole prompt. */
+  prompt: string;
+  signature: Signature;
+  tests: { public: TestCase[]; hidden: TestCase[] };
+  interviewer: { approach: string; hints: string[]; pitfalls: string[] };
+}
+
 export interface Question {
   meta: QuestionMeta;
   /** Languages this question can be solved in. */
   languages: Language[];
   dir: string;
+  /** The prompt (single-part) or the shared introduction (multipart). */
   prompt: string;
+  /** Starter code for the first part. */
   starter: Partial<Record<Language, string>>;
+  /** Coding questions: one entry, or one per part for multipart questions. */
+  parts: Part[];
+  multipart: boolean;
+  /** Tests of the first part (all tests for a single-part question). */
   tests?: { public: TestCase[]; hidden: TestCase[] };
   reference?: string; // python reference solution, used to compute expected output for custom inputs
 }
 
+/** Fills in entry-point names for every language the signature can support. */
+function withEntries(sig: SignatureMeta): Signature {
+  const js = sig.entry.javascript;
+  const entry: Partial<Record<Language, string>> = {
+    ...sig.entry,
+    python: sig.entry.python ?? (sig.kind === "function" ? snake(js) : js),
+    typescript: sig.entry.typescript ?? js,
+  };
+  if (isTyped(sig)) {
+    for (const l of TYPED_LANGUAGES)
+      if (supportsLanguage(l, sig)) entry[l] ??= defaultEntry(l, sig.kind, { python: entry.python!, javascript: js });
+  }
+  return { ...sig, entry };
+}
+
+const readTests = (file: string) => TestsFile.parse(JSON.parse(fs.readFileSync(file, "utf8"))) as Part["tests"];
+
 function loadQuestion(dir: string): Question {
   const meta = QuestionMeta.parse(JSON.parse(fs.readFileSync(path.join(dir, "question.json"), "utf8")));
   const prompt = fs.readFileSync(path.join(dir, "prompt.md"), "utf8");
-  const q: Question = { meta, dir, prompt, starter: {}, languages: [] };
-  if (meta.type === "coding") {
-    const sig = meta.signature;
-    if (!sig) throw new Error(`${meta.id}: coding questions need a signature`);
-    if (isTyped(sig)) {
-      for (const l of TYPED_LANGUAGES) if (supportsLanguage(l, sig)) sig.entry[l] ??= defaultEntry(l, sig.kind, sig.entry);
-    }
-    q.languages = LANGUAGES.map((l) => l.id).filter((l) => sig.entry[l]);
-    for (const l of LANGUAGES) {
-      if (!q.languages.includes(l.id)) continue;
-      const f = path.join(dir, "starter", `solution.${l.ext}`);
-      if (fs.existsSync(f)) q.starter[l.id] = fs.readFileSync(f, "utf8");
-      else if ((TYPED_LANGUAGES as string[]).includes(l.id)) q.starter[l.id] = typedStarter(l.id as (typeof TYPED_LANGUAGES)[number], sig, sig.entry[l.id]!);
-    }
-    q.tests = TestsFile.parse(JSON.parse(fs.readFileSync(path.join(dir, "tests.json"), "utf8"))) as Question["tests"];
-    const ref = path.join(dir, "reference.py");
-    if (fs.existsSync(ref)) q.reference = fs.readFileSync(ref, "utf8");
+  const q: Question = { meta, dir, prompt, starter: {}, languages: [], parts: [], multipart: Boolean(meta.parts) };
+  if (meta.type !== "coding") return q;
+
+  if (meta.parts) {
+    q.parts = meta.parts.map((p, index) => {
+      const pdir = path.join(dir, "parts", p.id);
+      return {
+        index,
+        id: p.id,
+        title: p.title,
+        durationMinutes: p.durationMinutes,
+        prompt: fs.readFileSync(path.join(pdir, "prompt.md"), "utf8"),
+        signature: withEntries(p.signature),
+        tests: readTests(path.join(pdir, "tests.json")),
+        interviewer: p.interviewer,
+      };
+    });
+  } else {
+    const sig = withEntries(meta.signature!);
+    q.parts = [
+      {
+        index: 0,
+        id: meta.id,
+        title: meta.title,
+        prompt,
+        signature: sig,
+        tests: readTests(path.join(dir, "tests.json")),
+        interviewer: { approach: meta.interviewer.approach, hints: meta.interviewer.hints, pitfalls: meta.interviewer.pitfalls },
+      },
+    ];
   }
+  // A language is offered only when every part supports it.
+  q.languages = LANGUAGES.map((l) => l.id).filter((l) => q.parts.every((p) => p.signature.entry[l]));
+  q.tests = q.parts[0].tests;
+  const sig = q.parts[0].signature;
+  for (const l of q.languages) {
+    const f = path.join(dir, "starter", `solution.${LANGUAGES.find((x) => x.id === l)!.ext}`);
+    if (!q.multipart && fs.existsSync(f)) q.starter[l] = fs.readFileSync(f, "utf8");
+    else if (isTyped(sig)) q.starter[l] = generateStarter(l, sig, sig.entry[l]!);
+  }
+  q.languages = q.languages.filter((l) => q.starter[l] !== undefined);
+  const ref = path.join(dir, "reference.py");
+  if (fs.existsSync(ref)) q.reference = fs.readFileSync(ref, "utf8");
   return q;
+}
+
+/** Starter code with the stubs for parts 0..upTo, as the candidate sees it on reaching part `upTo`. */
+export function starterThrough(q: Question, upTo: number): Partial<Record<Language, string>> {
+  const out: Partial<Record<Language, string>> = {};
+  for (const l of q.languages) {
+    let code = q.starter[l]!;
+    for (const p of q.parts.slice(1, upTo + 1)) code = addPartStub(l, code, p.signature, p.signature.entry[l]!);
+    out[l] = code;
+  }
+  return out;
 }
 
 let cache: Map<string, Question> | null = null;
@@ -140,17 +238,30 @@ export function getQuestion(id: string): Question {
 
 export function summarize(q: Question): QuestionSummary {
   const { id, title, type, difficulty, tags, durationMinutes } = q.meta;
-  return { id, title, type, difficulty, tags, durationMinutes, languages: q.meta.type === "coding" ? q.languages : undefined };
+  return {
+    id,
+    title,
+    type,
+    difficulty,
+    tags,
+    durationMinutes,
+    languages: q.meta.type === "coding" ? q.languages : undefined,
+    parts: q.multipart ? q.parts.length : undefined,
+  };
 }
 
 /** What the candidate is allowed to see, given strictness and progress. */
-export function questionView(q: Question, strictness: Strictness, submitted: boolean): QuestionView {
+export function questionView(q: Question, strictness: Strictness, submitted: boolean, part = 0): QuestionView {
+  const coding = q.meta.type === "coding";
+  const current = coding ? q.parts[Math.min(part, q.parts.length - 1)] : undefined;
   return {
     ...summarize(q),
     prompt: q.prompt,
-    starter: q.meta.type === "coding" ? q.starter : undefined,
-    publicTests: strictness === "strict" ? undefined : q.tests?.public,
-    signature: q.meta.signature ? { kind: q.meta.signature.kind, entry: q.meta.signature.entry } : undefined,
+    partViews: q.multipart ? q.parts.slice(0, part + 1).map((p) => ({ index: p.index, id: p.id, title: p.title, prompt: p.prompt })) : undefined,
+    part: q.multipart ? part : undefined,
+    starter: coding ? starterThrough(q, part) : undefined,
+    publicTests: strictness === "strict" ? undefined : current?.tests.public,
+    signature: current ? { kind: current.signature.kind, entry: current.signature.entry } : undefined,
     followUps: submitted ? q.meta.followUps : undefined,
   };
 }

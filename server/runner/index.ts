@@ -1,9 +1,9 @@
 import type { CaseResult, Language, RunResult, TestCase } from "../../shared/types.ts";
-import type { Question } from "../questions.ts";
+import type { Question, Signature } from "../questions.ts";
 import { buildProgram, RESULT_MARKER, type HarnessSpec } from "./harness.ts";
 import { ensureRuntime, execute, TIMEOUT_EXIT, type ExecResult } from "./execute.ts";
 import { BEGIN_MARK, buildTypedProgram, END_MARK, isTypedLanguage } from "./typed.ts";
-import { InputError } from "./signature.ts";
+import { InputError, type TypedSignature } from "./signature.ts";
 
 export interface LabeledCase {
   kind: CaseResult["kind"];
@@ -29,8 +29,7 @@ interface RawRun {
 const timeLimitMessage = () =>
   `Time limit exceeded (${process.env.DEFAANG_RUN_TIMEOUT ?? 10}s). Look for an infinite loop or an algorithm that is too slow.`;
 
-async function runRaw(q: Question, lang: Language, code: string, tests: TestCase[]): Promise<RawRun> {
-  const sig = q.meta.signature!;
+async function runRaw(sig: Signature, lang: Language, code: string, tests: TestCase[]): Promise<RawRun> {
   const entry = sig.entry[lang];
   if (!entry) return { ok: false, cases: [], compileError: `This question isn't available in ${lang} yet.`, durationMs: 0 };
   const unavailable = await ensureRuntime(lang);
@@ -38,14 +37,14 @@ async function runRaw(q: Question, lang: Language, code: string, tests: TestCase
   if (isTypedLanguage(lang)) {
     let files: Record<string, string>;
     try {
-      files = buildTypedProgram(lang, sig, entry, code, tests.map((t) => ({ args: t.args as unknown[], ops: t.ops })));
+      files = buildTypedProgram(lang, sig as TypedSignature, entry, code, tests.map((t) => ({ args: t.args as unknown[], ops: t.ops })));
     } catch (e) {
       if (e instanceof InputError) return { ok: false, cases: [], compileError: `Invalid test input. ${e.message}`, durationMs: 0 };
       throw e;
     }
     return parseCaseStream(await execute(lang, files, ""), tests.length);
   }
-  const spec = toSpec(q, lang, tests);
+  const spec: HarnessSpec = { kind: sig.kind, entry, cases: tests.map((c) => ({ args: c.args as unknown[], ops: c.ops })) };
   const program = buildProgram(lang, code, entry);
   const r = await execute(lang, { [`main.${lang === "python" ? "py" : lang === "javascript" ? "js" : "ts"}`]: program }, JSON.stringify(spec));
   const idx = r.stdout.lastIndexOf(RESULT_MARKER);
@@ -156,15 +155,6 @@ export function matches(output: unknown, expected: unknown, mode: "exact" | "uno
   return deepEqual(output, expected);
 }
 
-function toSpec(q: Question, lang: Language, cases: TestCase[]): HarnessSpec {
-  const sig = q.meta.signature!;
-  return {
-    kind: sig.kind,
-    entry: sig.entry[lang]!,
-    cases: cases.map((c) => ({ args: c.args as unknown[], ops: c.ops })),
-  };
-}
-
 /**
  * Runs the candidate's code against the given cases. Custom cases (no expected value) get their
  * expected output from the question's Python reference solution when `withReference` is set.
@@ -174,16 +164,17 @@ export async function runCases(
   lang: Language,
   code: string,
   cases: LabeledCase[],
-  opts: { withReference: boolean },
+  opts: { withReference: boolean; part?: number },
 ): Promise<RunResult> {
-  const sig = q.meta.signature;
-  if (!sig) throw new Error("Not a coding question");
+  const part = q.parts[opts.part ?? 0];
+  if (!part) throw new Error("Not a coding question");
+  const sig = part.signature;
   const tests = cases.map((c) => c.test);
   const needRef = opts.withReference && q.reference && cases.some((c) => c.test.expected === undefined);
 
   const [run, ref] = await Promise.all([
-    runRaw(q, lang, code, tests),
-    needRef ? runRaw(q, "python", q.reference!, tests) : Promise.resolve(null),
+    runRaw(sig, lang, code, tests),
+    needRef ? runRaw(sig, "python", q.reference!, tests) : Promise.resolve(null),
   ]);
 
   const results: CaseResult[] = cases.map((c, i) => {
@@ -192,6 +183,7 @@ export async function runCases(
     if (expected === undefined && ref?.ok && !ref.cases[i]?.error) expected = ref.cases[i]?.output;
     const res: CaseResult = {
       index: i,
+      part: q.multipart ? part.index : undefined,
       name: c.test.name,
       kind: c.kind,
       args: c.test.args,
@@ -216,5 +208,19 @@ export async function runCases(
     passed: graded.filter((r) => r.passed).length,
     total: graded.length,
     durationMs: run.durationMs,
+  };
+}
+
+/** Combines the runs of several parts (one compile each) into one result, e.g. for the final submission. */
+export function mergeResults(results: RunResult[]): RunResult {
+  const failed = results.find((r) => !r.ok);
+  return {
+    ok: !failed,
+    compileError: failed?.compileError,
+    stderr: results.map((r) => r.stderr).filter(Boolean).join("\n") || undefined,
+    cases: results.flatMap((r) => r.cases),
+    passed: results.reduce((a, r) => a + r.passed, 0),
+    total: results.reduce((a, r) => a + r.total, 0),
+    durationMs: results.reduce((a, r) => a + r.durationMs, 0),
   };
 }

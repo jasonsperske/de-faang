@@ -248,3 +248,13 @@ table.sessions { width: 100%; border-collapse: collapse; margin-top: 8px; }
 @media (max-width: 1000px) {
   .options, .options.three, .two-col { grid-template-columns: 1fr; }
 }
+
+/* Multipart questions */
+.parts-prompt .part { border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; }
+.parts-prompt details.part > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; list-style-position: inside; }
+.parts-prompt details.part > :not(summary) { padding: 0 12px; }
+.parts-prompt details.part.current { border-color: var(--accent); }
+.parts-prompt details.part.done > summary { color: var(--muted); }
+.parts-prompt .part.locked { padding: 8px 12px; border-style: dashed; }
+.parts-prompt .part-no { color: var(--accent); margin-right: 4px; }
+.parts-prompt .part.locked .part-no, .parts-prompt details.part.done .part-no { color: var(--muted); }

@@ -98,28 +98,48 @@ export function buildPacket(q: Question, state: SessionState): string {
       state.submittedAt ? Math.round((Date.parse(state.submittedAt) - Date.parse(state.createdAt)) / 60000) : elapsedMinutes(state)
     } min\n- Hints requested: ${state.hintsRequested} · Test runs before submit: ${state.runs}`,
   );
-  s.push(`## Question as presented\n${q.prompt}`);
-  s.push(
-    `## Interviewer reference notes\nExpected approach: ${q.meta.interviewer.approach}\n\nPitfalls:\n${q.meta.interviewer.pitfalls.map((p) => `- ${p}`).join("\n")}${
-      q.meta.interviewer.facts.length ? `\n\nFacts available on request:\n${q.meta.interviewer.facts.map((f) => `- ${f}`).join("\n")}` : ""
-    }`,
-  );
+  if (q.multipart) {
+    const reached = (state.part ?? 0) + 1;
+    s.push(
+      `## Progress\nMultipart question: the candidate reached part ${reached} of ${q.parts.length}.\n${q.parts
+        .map((p) => {
+          const r = state.partResults?.find((x) => x.part === p.index);
+          const min = r ? Math.round((Date.parse(r.at) - Date.parse(state.createdAt)) / 60000) : undefined;
+          const status = r ? `handed in at minute ${min} with ${r.passed}/${r.total} tests passing` : p.index < reached ? "worked on until the final submission" : "not reached";
+          return `- Part ${p.index + 1} (${p.title}${p.durationMinutes ? `, ~${p.durationMinutes} min` : ""}): ${status}`;
+        })
+        .join("\n")}\nGrade what was attempted; not reaching later parts is itself evidence about speed and problem solving.`,
+    );
+    s.push(`## Question as presented\n${q.prompt}\n\n${q.parts.map((p) => `### Part ${p.index + 1}: ${p.title}${p.index < reached ? "" : " (not reached)"}\n${p.prompt}`).join("\n\n")}`);
+    s.push(
+      `## Interviewer reference notes\n${q.parts
+        .map((p) => `### Part ${p.index + 1}\nExpected approach: ${p.interviewer.approach}\n\nPitfalls:\n${p.interviewer.pitfalls.map((x) => `- ${x}`).join("\n")}`)
+        .join("\n\n")}${q.meta.interviewer.approach ? `\n\n### Whole round\n${q.meta.interviewer.approach}` : ""}`,
+    );
+  } else {
+    s.push(`## Question as presented\n${q.prompt}`);
+    s.push(
+      `## Interviewer reference notes\nExpected approach: ${q.meta.interviewer.approach}\n\nPitfalls:\n${q.meta.interviewer.pitfalls.map((p) => `- ${p}`).join("\n")}${
+        q.meta.interviewer.facts.length ? `\n\nFacts available on request:\n${q.meta.interviewer.facts.map((f) => `- ${f}`).join("\n")}` : ""
+      }`,
+    );
+  }
   if (q.meta.type === "coding") {
     const lang = state.config.language ?? "python";
     s.push(`## Final submission (${LANGUAGES.find((l) => l.id === lang)!.label})\n\`\`\`${lang}\n${state.code?.[lang] ?? ""}\n\`\`\``);
     if (submit) {
       const lines = submit.cases.map(
         (c) =>
-          `- [${c.passed ? "PASS" : "FAIL"}] ${c.kind} ${c.name ?? c.index}: args=${JSON.stringify(c.args).slice(0, 300)}${
+          `- [${c.passed ? "PASS" : "FAIL"}] ${c.part !== undefined ? `part ${c.part + 1} ` : ""}${c.kind} ${c.name ?? c.index}: args=${JSON.stringify(c.args).slice(0, 300)}${
             c.passed ? "" : c.error ? ` → error: ${c.error.split("\n")[0]}` : ` → got ${JSON.stringify(c.output)?.slice(0, 200)}, expected ${JSON.stringify(c.expected)?.slice(0, 200)}`
           }`,
       );
       s.push(
-        `## Submission test results: ${submit.passed}/${submit.total} passed (public + hidden)\n${submit.ok ? lines.join("\n") : `Did not run: ${submit.compileError}`}`,
+        `## Submission test results: ${submit.passed}/${submit.total} passed (public + hidden${q.multipart ? ", every part reached, run on the final code" : ""})\n${submit.ok ? lines.join("\n") : `Did not run: ${submit.compileError}`}`,
       );
     }
     const history = runs.filter((r) => !r.submit);
-    s.push(`## Run history (${history.length} runs)\n${history.map(summarizeRun).join("\n") || "The candidate never ran their code before submitting."}`);
+    s.push(`## Run history (${history.filter((r) => !r.partSubmit).length} runs${q.multipart ? ", plus part hand-ins" : ""})\n${history.map(summarizeRun).join("\n") || "The candidate never ran their code before submitting."}`);
   } else {
     s.push(`## Candidate design notes\n${state.design?.markdown ?? "(empty)"}`);
     s.push(`## Whiteboard (extracted shapes/arrows; image attached separately when available)\n${state.design?.diagramSummary || "(empty)"}`);

@@ -1,0 +1,75 @@
+{
+  "id": "anagram-pairs-and-compound-words",
+  "title": "Anagram Pairs & Compound Words",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["strings", "hash-map", "dynamic-programming", "multipart"],
+  "rubric": "coding",
+  "parts": [
+    {
+      "id": "anagram-pairs",
+      "title": "Count anagram pairs",
+      "durationMinutes": 15,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "countAnagramPairs" },
+        "params": [{ "name": "words", "type": "string[]" }],
+        "returns": "long"
+      },
+      "interviewer": {
+        "approach": "Deduplicate the words, then group them by a canonical key: the sorted letters, or a 26-entry letter-count tuple. A group of k distinct words contributes k*(k-1)/2 pairs. O(n * L log L) with sorted keys, O(n * L) with count keys, O(n * L) space. Brute force compares every pair in O(n^2 * L). The count can exceed 32 bits (n up to 10^5), so it is returned as a 64-bit integer.",
+        "hints": [
+          "What is the brute-force approach, and what does it cost? What makes two words anagrams of each other?",
+          "Could you compute something from each word, on its own, that is identical for all of its anagrams?",
+          "Group the words by that key with a hash map. If a group has k distinct words, how many pairs does it contain?"
+        ],
+        "pitfalls": [
+          "Counting a repeated word as an anagram of its own copy, or counting the same pair twice through duplicates.",
+          "Counting ordered pairs (a, b) and (b, a) separately.",
+          "Comparing every pair of words: O(n^2) when grouping gives O(n).",
+          "Summing pair counts in a 32-bit integer; C(k, 2) overflows once a group has more than about 65,000 words.",
+          "Building the key from a set of letters, which loses counts (\"aab\" vs \"abb\")."
+        ]
+      }
+    },
+    {
+      "id": "compound-words",
+      "title": "Find compound words",
+      "durationMinutes": 30,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "findCompoundWords" },
+        "compare": "unordered",
+        "params": [{ "name": "words", "type": "string[]" }],
+        "returns": "string[]"
+      },
+      "interviewer": {
+        "approach": "Put every word in a hash set. For each distinct word, run word-break DP: can[i] is true when word[:i] splits into dictionary words; can[i] = OR over j < i of can[j] and word[j:i] in the set, excluding the piece that is the whole word so a word isn't a piece of itself. A word is compound when can[len] is true. O(n * L^2) substring checks (O(n * L^3) counting substring hashing), O(n + L) extra space. Memoised DFS is equivalent. Optimisations: process words by increasing length and only look up shorter words, cap j at the longest word length, or walk a trie instead of hashing substrings.",
+        "hints": [
+          "Take one word. How would you decide whether it can be split into words from the list?",
+          "Try every first piece that is in the list, then ask the same question about the rest. What repeated work happens when the same suffix is reached by different splits?",
+          "Memoise on the start index (or build a boolean table over prefixes). Make sure a word can't be built from just itself."
+        ],
+        "pitfalls": [
+          "Treating the word itself as one valid piece, so every word counts as compound.",
+          "Greedy matching of the longest (or shortest) prefix, which fails on lists like [ab, abc, cd, abcd].",
+          "Plain recursion without memoisation is exponential; a hidden test with words a, aa, ..., a*15 and a*40 + b times it out.",
+          "Removing pieces after using them, although pieces can be reused.",
+          "Returning a duplicated compound word twice."
+        ]
+      }
+    }
+  ],
+  "followUps": [
+    "What are the time and space complexities of each part? Which input sizes or word lengths dominate each one?",
+    "For part 1, compare sorting each word's letters with counting them as the anagram key. When would each be faster, and how would your key change for Unicode text or case-insensitive matching?",
+    "For part 2, how would a trie change the algorithm and its complexity compared with a hash set of words?",
+    "How would you change part 2 to return, for each compound word, a split into the fewest possible pieces?",
+    "If the word list were too large for one machine's memory, how would you compute part 1's count?"
+  ],
+  "interviewer": {
+    "approach": "Two independent string problems on the same kind of input. Part 1 is a warm-up (canonical keys + combinatorics); expect it done in about 15 minutes so there is real time for part 2, which is the harder word-break DP."
+  },
+  "resources": ["tih-hash-table", "tih-string", "tih-dynamic-programming", "tih-trie", "big-o-cheatsheet", "tih-techniques"]
+}

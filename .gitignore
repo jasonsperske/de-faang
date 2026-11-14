@@ -4,3 +4,4 @@ dist/
 # Every interview round runs in its own folder under sessions/ — kept out of git.
 sessions/
 *.log
+__pycache__/

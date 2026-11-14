@@ -223,6 +223,7 @@ function CaseRow({ c }: { c: CaseResult }) {
       <button className="case-head" onClick={() => setOpen(!open)}>
         <span className="icon">{icon}</span>
         <span>
+          {c.part !== undefined && <span className="muted">part {c.part + 1} · </span>}
           {c.kind} {c.name ? `· ${c.name}` : `#${c.index + 1}`}
         </span>
         {c.ms !== undefined && <span className="muted small">{c.ms.toFixed(1)} ms</span>}
