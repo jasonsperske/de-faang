@@ -1,0 +1,56 @@
+{
+  "id": "monorepo-ci",
+  "title": "Design CI/CD for a Large Frontend Monorepo",
+  "type": "system-design",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["system-design", "developer-platform", "ci-cd", "caching", "build-systems"],
+  "rubric": "system-design",
+  "followUps": [
+    "A PR changes one file in a utility library that 40 packages depend on. Walk through exactly what CI computes and runs, and what is served from cache.",
+    "Two PRs each pass CI on their own, merge within a minute of each other, and break main together. How does your design prevent that, and what does it cost in merge latency?",
+    "A developer's laptop uploads a poisoned artifact to the remote cache. How do you make the cache safe to share between CI and developers, and what makes a cache key correct?",
+    "A test fails 2% of the time for reasons unrelated to the change. How does your system detect it, keep it from blocking merges, and get it fixed rather than ignored forever?",
+    "The browser extension must go through store review, while the web apps deploy continuously. How does the same pipeline handle both, and how do you roll back each?"
+  ],
+  "interviewer": {
+    "approach": "Strong answers make the dependency graph the centre of the design: compute what a change affects, run only that, and never redo work whose inputs haven't changed. Requirements: PR feedback p50 under 10 minutes, p95 under 20; main always green; required reviews from code owners per package; independent deploys per app; reproducible builds. Estimates: 1,500 PRs/week plus ~5 pushes per PR is ~7,500 pipeline runs/week, ~200/hour at peak; full build+test is ~4 hours of compute (parallelised to 60+ minutes), so running everything costs ~30,000 compute hours/week; with affected-only plus caching, typical PRs touch 5-10% of packages. Pipeline: on push, a planner checks out the merge commit, determines changed files, maps them to packages (plus global inputs such as lockfile, root configs and toolchain versions, which invalidate everything or a defined subset), computes the affected set via reverse dependencies in the package graph, and expands it into a DAG of tasks (lint, typecheck, build, unit test, e2e) per package. Tasks run on an autoscaled runner pool, distributed by DAG order with test sharding by historical duration. Remote cache: content-addressed by a hash of all task inputs (source files, dependency outputs' hashes, toolchain, env vars, command); outputs stored in object storage behind a cache service; CI writes, developers read only (or writes signed and scoped) to prevent poisoning; hermeticity checks to catch undeclared inputs. Merge queue: approved PRs enter a queue; the system tests speculative merges (main + PR1, main + PR1 + PR2, ...) in parallel, merges the passing prefix, and evicts failures, so main is never broken by semantic conflicts. Flaky tests: record results per test over time, auto-retry once and flag if pass-on-retry, quarantine tests above a flakiness threshold (non-blocking but still run and reported), file tickets to the owning team from CODEOWNERS, and track a flake budget. Ownership: CODEOWNERS per package path, required reviewers enforced by the host's branch protection, ownership metadata also used for alert routing. Deploys: each app has a pipeline triggered when main changes affect it; build once, promote the same artifact through staging, canary and production; web apps deploy continuously with feature flags and automatic rollback on error-rate regressions; the extension builds a versioned release candidate on a cadence, submits it to the stores, and uses remote config / staged rollouts since store rollbacks are slow. Observability: CI dashboards for queue time, p50/p95 duration, cache hit rate, flake rate, cost per PR.",
+    "hints": [
+      "Most PRs touch a handful of packages. How do you figure out which other packages a change can break?",
+      "If a package's inputs haven't changed since some earlier build anywhere in the company, do you need to build it again? What exactly are its inputs?",
+      "Two green PRs can still break main when combined. What would you have to test before merging to rule that out?",
+      "What should happen when a test fails, is retried, and passes?",
+      "What changes in the pipeline for an app that can't be redeployed instantly?"
+    ],
+    "pitfalls": [
+      "Running the whole build and test suite on every PR, only with more machines.",
+      "Determining affected packages from changed directories alone, ignoring transitive dependents and global inputs such as the lockfile or shared configs.",
+      "Cache keys based on branch names, timestamps or a subset of inputs, which serves stale or wrong artifacts.",
+      "Letting any machine write to the shared cache without integrity controls.",
+      "Testing PRs against an old main and merging without a merge queue, so main breaks on semantic conflicts.",
+      "Retrying flaky tests silently until they pass, which hides real failures and never gets them fixed.",
+      "Rebuilding artifacts separately for each environment instead of promoting one build.",
+      "Treating the browser extension like a web app with instant rollback."
+    ],
+    "facts": [
+      "About 300 engineers commit to the monorepo; about 1,500 pull requests are merged per week, and each PR gets about 5 pushes.",
+      "The repo has 4 web apps, a browser extension, a design system and about 80 shared libraries, with about 2 million lines of TypeScript.",
+      "Running every lint, typecheck, build and test takes about 4 hours of compute; today CI parallelises it to about 65 minutes per run.",
+      "A typical PR touches files in 1 to 3 packages, but one core utility library is a dependency of about 70% of packages.",
+      "Target: PR checks finish in under 10 minutes at p50 and 20 minutes at p95. main must stay green: a broken main blocks every team's deploys.",
+      "About 3% of CI runs currently fail because of flaky tests, and engineers routinely click retry.",
+      "Each package has an owning team; changes need approval from an owner of every package touched.",
+      "Web apps deploy to production many times a day. The browser extension ships a release every two weeks through the Chrome, Firefox, Safari and Edge stores, where review can take days.",
+      "Engineers also build locally and would like to reuse CI's build outputs.",
+      "CI compute budget is fixed; finance has asked for cost per PR to go down, not up."
+    ],
+    "deepDives": [
+      "Affected-graph computation: mapping changed files to packages, transitive dependents and global inputs",
+      "Content-addressed remote caching: cache keys, hermeticity and protection against poisoning",
+      "Merge queue with speculative batches to keep main green",
+      "Flaky test detection, quarantine and ownership",
+      "Independent deploys: build once, promote, canary, and the extension's store release train"
+    ]
+  },
+  "resources": ["bazel-remote-caching", "google-monorepo", "topological-sort", "feature-toggles", "sre-book", "sdp-primer", "hellointerview"]
+}

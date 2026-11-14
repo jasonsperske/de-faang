@@ -1,0 +1,106 @@
+{
+  "id": "writing-suggestions",
+  "title": "Apply & Rebase Writing Suggestions",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["strings", "intervals", "simulation", "multipart"],
+  "rubric": "coding",
+  "parts": [
+    {
+      "id": "apply-suggestions",
+      "title": "Accept all suggestions",
+      "durationMinutes": 25,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "applySuggestions" },
+        "params": [
+          { "name": "text", "type": "string" },
+          { "name": "spans", "type": "int[][]" },
+          { "name": "replacements", "type": "string[]" }
+        ],
+        "returns": "string"
+      },
+      "interviewer": {
+        "approach": "Two phases. (1) Conflict resolution in priority order: keep a list of accepted spans and accept a suggestion only if no accepted span overlaps it (start < e && s < end) or shares its start index. O(n^2) with a list, which is fine for n <= 1000; O(n log n) with a sorted structure (balanced tree or sorted list with bisect) that checks only the neighbours by start. (2) Sort the accepted suggestions by start and build the result in one left-to-right pass: copy text[pos:start], append the replacement, set pos = end; finally copy the tail. Building with a list/StringBuilder makes the pass O(len(text) + total replacement length). Applying replacements one at a time to a mutable string is a classic bug because later offsets shift; applying them right to left avoids the shift but still costs O(n * len) copies.",
+        "hints": [
+          "Start with the conflict rule. Given two ranges [a, b) and [c, d), what's the condition for them to share a character? What about insertions, where start == end?",
+          "Once you know which suggestions survive, do their offsets still refer to the original text after you apply the first one?",
+          "Sort the accepted suggestions by start, then walk the original text once, copying the gaps and appending replacements."
+        ],
+        "pitfalls": [
+          "Applying replacements one by one to the evolving string with the original offsets, so every later suggestion lands in the wrong place.",
+          "Using a closed-interval overlap test (start <= e && s <= end), which wrongly rejects adjacent ranges like [0, 2) and [2, 4).",
+          "Missing the insertion cases: two insertions at the same index, an insertion strictly inside a replacement, or an insertion at a replacement's start (all conflict), versus one at a replacement's end (fine).",
+          "Resolving conflicts by position order instead of priority order, or letting a skipped suggestion block later ones.",
+          "Repeated string concatenation in a loop, which is quadratic in some languages."
+        ]
+      }
+    },
+    {
+      "id": "rebase-suggestions",
+      "title": "Keep suggestions valid while the user types",
+      "durationMinutes": 20,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "rebaseSuggestions" },
+        "params": [
+          { "name": "spans", "type": "int[][]" },
+          { "name": "edits", "type": "int[][]" }
+        ],
+        "returns": "int[][]"
+      },
+      "interviewer": {
+        "approach": "Simulate: for each edit compute delta = insertedLength - (editEnd - editStart); for each live span, keep it when end <= editStart, shift both ends by delta when start >= editEnd, otherwise mark it [-1, -1]. Check the conditions in that order so an insertion edit at a span's start shifts the span and one at its end keeps it. O(n * m), fine for the constraints. Faster: sort spans by start; each edit affects a contiguous run of spans (binary search), and the shift applies to a suffix, so a lazy offset (Fenwick tree or a running offset when edits arrive in increasing position) brings it to O((n + m) log n). This is the core of operational transformation: a client's suggestions are transformed against concurrent local edits instead of being recomputed.",
+        "hints": [
+          "Take one suggestion and one edit. Draw the three possible relationships between the two ranges.",
+          "What happens at the boundaries: a suggestion that ends exactly where the edit starts, or starts exactly where it ends? Pick the rule from the prompt and apply it in that order.",
+          "Each edit is in the coordinates of the text after earlier edits. If you update all spans after each edit, do you need anything else?"
+        ],
+        "pitfalls": [
+          "Applying all edits in original-text coordinates instead of sequentially.",
+          "Shifting only the start (or only the end) of a span.",
+          "Getting the boundary cases backwards: an insertion edit at a suggestion's start must shift it, at its end must keep it.",
+          "Relying by accident on [-1, -1] ending before every edit to keep dropped spans in place. It works, but a candidate should skip dropped spans explicitly or be able to say why it's safe.",
+          "Removing dropped suggestions from the output instead of returning [-1, -1] in place, which breaks the one-to-one order."
+        ]
+      }
+    }
+  ],
+  "followUps": [
+    "What are the time and space complexities of both parts? How would you make part 1's conflict check O(log n) per suggestion, and part 2 faster than O(spans × edits)?",
+    "Real text is UTF-16 in browsers, UTF-8 on many servers and grapheme clusters on screen. What goes wrong when a suggestion server and a browser extension disagree on what an 'index' is, and how would you avoid it?",
+    "Part 2 drops any suggestion that touches an edit. When could you keep it instead (for example, the user fixed the typo themselves, or typed inside a long sentence-level suggestion), and what would you need to know?",
+    "Suggestions are computed on the server for version N of the document while the client is already at version N + 3. How would you use part 2 to reconcile them, and how does this relate to operational transformation or CRDTs?",
+    "How would you test this so that a bug in offset handling can't ship to millions of users? What properties would you check with randomized tests?"
+  ],
+  "interviewer": {
+    "approach": "Two related problems from a writing assistant. Part 1 is interval conflict resolution plus a single-pass string rebuild; part 2 is offset transformation under sequential edits. Expect part 1 in about 25 minutes. Strong candidates state the half-open overlap rule precisely, handle zero-length ranges deliberately, and test boundaries. In part 2 look for clean case analysis and for noticing that edits are sequential. Candidates with editor or browser-extension experience should connect part 2 to operational transformation and to index-unit mismatches (UTF-16 vs code points)."
+  },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "offset_boundary_scrutiny",
+        "name": "Scrutinising the AI's offset and boundary logic",
+        "weight": 0.15,
+        "signals": "Checked the AI's overlap test against half-open ranges and zero-length insertions (same-start insertions, an insertion inside a replacement, at its start, at its end). Caught AI code that applies replacements to the evolving string with original offsets. In part 2, confirmed edits are applied sequentially and the keep/shift/drop checks run in the stated order, and that dropped spans stay [-1, -1] in place.",
+        "levels": {
+          "1": "Shipped AI code with shifting offsets or a closed-interval overlap test without noticing.",
+          "2": "Found the offset or boundary bugs only through failing hidden tests; couldn't say why they happened.",
+          "3": "Wrote targeted boundary tests (adjacent ranges, insertions at both ends of a range) before trusting the AI's code.",
+          "4": "Specified the overlap and rebase rules to the AI precisely up front, then reviewed its code line by line against them and explained the operational-transformation connection."
+        },
+        "resources": ["tih-interval", "tih-string", "operational-transformation"]
+      }
+    ],
+    "watchFor": [
+      "Applying each replacement to the current string with the original offsets (or in priority order instead of position order), so later suggestions land in the wrong place.",
+      "Overlap tests with <= that treat adjacent ranges as conflicting, or tests that ignore zero-length insertions entirely.",
+      "Sorting suggestions by position before resolving conflicts, which throws away the priority order.",
+      "Part 2: treating every edit as if it were in original-text coordinates, or shifting a dropped [-1, -1] span.",
+      "Part 2: removing dropped suggestions from the result instead of returning [-1, -1] in place."
+    ]
+  },
+  "resources": ["tih-interval", "tih-string", "tih-sorting", "operational-transformation", "big-o-cheatsheet", "tih-techniques"]
+}

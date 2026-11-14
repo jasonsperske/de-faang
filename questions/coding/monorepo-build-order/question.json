@@ -1,0 +1,108 @@
+{
+  "id": "monorepo-build-order",
+  "title": "Monorepo Build Order & Affected Packages",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": ["graphs", "topological-sort", "heap", "multipart"],
+  "rubric": "coding",
+  "parts": [
+    {
+      "id": "build-order",
+      "title": "Deterministic build order",
+      "durationMinutes": 25,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "buildOrder" },
+        "params": [
+          { "name": "packages", "type": "string[]" },
+          { "name": "deps", "type": "string[][]" }
+        ],
+        "returns": "string[]"
+      },
+      "interviewer": {
+        "approach": "Kahn's algorithm with a min-heap. Build adjacency from dependency to dependents (edge b -> a for [a, b]), deduplicating repeated pairs (or counting them consistently in both the in-degree and the decrement). Push every package with in-degree 0 into a min-heap; repeatedly pop the smallest, append it, and decrement its dependents, pushing any that reach 0. If the output is shorter than the package count there is a cycle: return []. O((V + E) log V) time, O(V + E) space. DFS post-order also finds a valid order and detects cycles (three colours), but doesn't give the lexicographic tie-breaking without extra work, so expect the heap version once the candidate reads the determinism requirement.",
+        "hints": [
+          "Which packages can you build first? What makes a package ready later on?",
+          "Track how many unbuilt dependencies each package still has. When does that number change?",
+          "Several packages can be ready at once and you need the smallest name each time. What structure gives you the minimum efficiently as items are added?",
+          "If you can't build everything, what does that tell you about the graph?"
+        ],
+        "pitfalls": [
+          "Reversing the edge direction, which produces dependents before their dependencies.",
+          "Sorting the initially ready packages once and then using a plain queue, so later ties aren't broken alphabetically.",
+          "Counting a duplicated pair twice in the in-degree but decrementing once (or vice versa), so a package never becomes ready.",
+          "Missing cycle detection, or detecting only self-loops, or returning a partial order when a cycle exists.",
+          "Repeatedly scanning all packages for a ready one: O(V^2), which is slow at 10^4 packages.",
+          "Recursive DFS that overflows the stack on a 1,000-package chain in some languages."
+        ]
+      }
+    },
+    {
+      "id": "affected-packages",
+      "title": "Affected packages for a pull request",
+      "durationMinutes": 20,
+      "signature": {
+        "kind": "function",
+        "entry": { "javascript": "affectedPackages" },
+        "params": [
+          { "name": "packages", "type": "string[]" },
+          { "name": "deps", "type": "string[][]" },
+          { "name": "changed", "type": "string[]" }
+        ],
+        "returns": "string[]"
+      },
+      "interviewer": {
+        "approach": "Run part 1 to get the order (and detect cycles). Start a BFS or iterative DFS from the known changed packages over the dependency -> dependents edges, marking every reachable package. Return the part 1 order filtered to the marked set. O((V + E) log V) for the order plus O(V + E) for the traversal. An alternative is one pass over the topological order propagating an 'affected' flag from dependencies, which is elegant but only works because the order is topological.",
+        "hints": [
+          "If utils changes, which packages could break? Which direction do you need to walk the dependency edges?",
+          "Can you reuse the graph and the order from part 1?",
+          "Mark everything reachable from the changed packages, then filter part 1's output."
+        ],
+        "pitfalls": [
+          "Walking the edges the wrong way, returning the changed package's dependencies instead of its dependents.",
+          "Returning affected packages in discovery (BFS) order instead of build order.",
+          "Not ignoring unknown changed names, which crashes on a lookup or adds a phantom package.",
+          "Visiting a diamond's top twice and listing it twice.",
+          "Recomputing reachability from scratch for every changed package: O(changed × (V + E))."
+        ]
+      }
+    }
+  ],
+  "followUps": [
+    "What are the time and space complexities of each part? What changes if there are 10^6 packages and the graph doesn't fit in memory on the CI runner?",
+    "Your build order is serial. How would you schedule the builds on 8 parallel workers to minimise total build time if you knew each package's build duration?",
+    "When the graph has a cycle, returning an empty list isn't helpful to the developer. How would you report the cycle (or all of them) in a useful way?",
+    "How do you decide which packages a PR 'changed' in the first place? What about changes to a root config file, a lockfile, or a test fixture shared across packages?",
+    "The affected set for a change to a core library is almost the whole repo. How would remote caching, test sharding or a merge queue keep CI fast anyway?"
+  ],
+  "interviewer": {
+    "approach": "A graph problem framed around monorepo tooling (Nx, Turborepo, Bazel). Part 1 is topological sort with deterministic tie-breaking and cycle detection; part 2 is reverse reachability filtered through part 1's order. Expect part 1 in about 25 minutes. Candidates who have run a monorepo should naturally discuss affected-graph computation, caching, and what counts as a change in the follow-ups; probe for that depth."
+  },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "graph_direction_and_determinism",
+        "name": "Checking the AI's edge direction, tie-breaking and cycle handling",
+        "weight": 0.15,
+        "signals": "Verified which way the AI's edges point (dependency before dependent) and that it uses a min-heap rather than a sorted-once queue. Tested duplicate pairs, self-dependencies and a cycle in one component. In part 2, confirmed the AI walks dependents (not dependencies), ignores unknown names, and returns build order rather than BFS order.",
+        "levels": {
+          "1": "Accepted AI code with reversed edges, non-deterministic ties or no cycle detection.",
+          "2": "Fixed direction or tie-breaking bugs only after failing tests.",
+          "3": "Built small graphs (diamond, duplicate edge, cycle) to test the AI's code before trusting it.",
+          "4": "Told the AI the exact edge convention and determinism rule up front, reviewed its in-degree bookkeeping, and explained why a sorted-once queue is wrong."
+        },
+        "resources": ["tih-graph", "topological-sort", "tih-heap"]
+      }
+    ],
+    "watchFor": [
+      "Reversed edges: building a package before the packages it depends on.",
+      "Sorting the initial ready set and then using a FIFO queue, so ties after the first step aren't alphabetical.",
+      "Duplicate dependency pairs counted twice in the in-degree but decremented once.",
+      "Recursive DFS without cycle detection, or one that overflows the stack on the long-chain hidden test.",
+      "Part 2: returning dependencies of the changed package instead of dependents, or BFS discovery order instead of build order."
+    ]
+  },
+  "resources": ["tih-graph", "topological-sort", "tih-heap", "py-heapq", "bazel-remote-caching", "big-o-cheatsheet"]
+}

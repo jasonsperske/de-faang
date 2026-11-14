@@ -1,0 +1,23 @@
+{
+  "public": [
+    {"name": "example", "args": [6, 7], "expected": 42},
+    {"name": "negative operand", "args": [-4, 25], "expected": -100}
+  ],
+  "hidden": [
+    {"name": "zero left", "args": [0, 12345], "expected": 0},
+    {"name": "zero right", "args": [98765, 0], "expected": 0},
+    {"name": "both zero", "args": [0, 0], "expected": 0},
+    {"name": "one", "args": [1, 777], "expected": 777},
+    {"name": "minus one", "args": [-1, 777], "expected": -777},
+    {"name": "both negative", "args": [-13, -17], "expected": 221},
+    {"name": "negative right", "args": [9, -11], "expected": -99},
+    {"name": "power of two", "args": [1024, 4096], "expected": 4194304},
+    {"name": "largest magnitudes", "args": [67108864, 67108864], "expected": 4503599627370496},
+    {"name": "most negative times positive", "args": [-67108864, 67108864], "expected": -4503599627370496},
+    {"name": "most negative times most negative", "args": [-67108864, -67108864], "expected": 4503599627370496},
+    {"name": "large odd operands", "args": [67108863, 67108861], "expected": 4503599358935043},
+    {"name": "large and small", "args": [67108863, 3], "expected": 201326589},
+    {"name": "small and large", "args": [5, -67108857], "expected": -335544285},
+    {"name": "mixed bits", "args": [22369621, -28760941], "expected": -643371349773361}
+  ]
+}

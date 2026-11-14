@@ -1,0 +1,68 @@
+{
+  "id": "multiply-without-multiplication",
+  "title": "Multiply Without the Multiplication Operator",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 25,
+  "tags": ["bit-manipulation", "math", "recursion"],
+  "rubric": "coding",
+  "signature": {
+    "kind": "function",
+    "entry": { "javascript": "multiply" },
+    "params": [
+      { "name": "a", "type": "int" },
+      { "name": "b", "type": "int" }
+    ],
+    "returns": "long"
+  },
+  "followUps": [
+    "What is the time complexity of your solution in terms of the operands' values and their bit lengths? Why does looping over the smaller operand matter?",
+    "Walk through how your code handles negative numbers. What would go wrong if you shifted a negative number right until it reached zero in Python, Java or C?",
+    "How would you implement integer division (truncating toward zero) with the same restrictions? What changes about overflow at the edges of a 32-bit range?",
+    "Real CPUs multiply in a few cycles. How does hardware do it, and where do shift-and-add ideas still show up (big-number libraries, Karatsuba, multiplying by constants in compilers)?",
+    "How would you test this exhaustively enough to be confident, given that you can't compare against the * operator in production code?"
+  ],
+  "interviewer": {
+    "approach": "Shift-and-add (Russian peasant / binary long multiplication). Record the sign as (a < 0) XOR (b < 0) and work on magnitudes. Then, while b > 0: if the lowest bit of b is set, add a to the result; shift a left by one and b right by one. O(log min(|a|, |b|)) iterations if the loop runs over the smaller operand's bits, O(1) space. Equivalent: recursion multiply(a, b) = multiply(a, b >> 1) << 1, plus a when b is odd, giving O(log b) depth; or summing a << i for each set bit i of b. Repeated addition (adding a to itself |b| times) is the brute force: correct but O(|b|), which is up to 6.7 x 10^7 additions here and too slow in Python on the hidden tests; ask for something better if the candidate stops there. Strong candidates handle zero and sign up front, choose the smaller operand to drive the loop, avoid shifting negative numbers, use a 64-bit accumulator, and can extend the idea to division by repeated doubling and subtraction.",
+    "hints": [
+      "What's the simplest correct approach, and how many steps does it take for b = 50 million?",
+      "Write b in binary. How can you express a × b as a sum of a, 2a, 4a, 8a, ...? Which of those terms do you need?",
+      "Doubling a number is a left shift. Look at b one bit at a time, from the lowest.",
+      "Deal with the signs separately: work with absolute values and fix the sign at the end."
+    ],
+    "pitfalls": [
+      "Repeated addition, which is O(|b|) and times out on large operands.",
+      "Shifting a negative b right until it reaches zero: in Python, Java (>>) and C, -1 >> 1 stays -1, so the loop never ends.",
+      "Getting the sign wrong when exactly one operand is negative, or when both are.",
+      "Accumulating in a 32-bit integer in Java, C, C++ or Go, so products above 2^31 overflow.",
+      "Using a disguised multiplication: Math.imul, **, pow, or repeated doubling with *.",
+      "Forgetting the zero cases, or looping over the larger operand when the smaller one would take fewer steps."
+    ]
+  },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "constraint_and_sign_check",
+        "name": "Holding the AI to the constraints and checking signs",
+        "weight": 0.15,
+        "signals": "Confirmed that the AI's code really avoids *, /, % and multiplying library calls; that it runs in O(log) rather than repeated addition; that it handles one or both operands negative, zero, and the largest magnitudes; and that the accumulator is 64-bit. Noticed when the AI shifted a negative number right in a loop.",
+        "levels": {
+          "1": "Accepted AI code that uses a forbidden operator, loops forever on negatives, or overflows.",
+          "2": "Caught constraint or sign bugs only through failing tests.",
+          "3": "Tested signs, zero and large values deliberately and checked the code for forbidden operators before submitting.",
+          "4": "Gave the AI the constraints and complexity target up front, reviewed the bit loop line by line, and could explain the binary-expansion argument and extend it to division."
+        },
+        "resources": ["tih-binary", "russian-peasant-multiplication"]
+      }
+    ],
+    "watchFor": [
+      "Using *, Math.imul, ** or pow somewhere in the solution, sometimes hidden in a helper.",
+      "Repeated addition presented as the final answer.",
+      "A while (b != 0) loop with b >>= 1 on a negative b, which never terminates in Python, Java or C.",
+      "An int accumulator in Java, C, C++ or Go instead of long / long long / int64.",
+      "Sign logic that's wrong when both operands are negative."
+    ]
+  },
+  "resources": ["tih-binary", "russian-peasant-multiplication", "big-o-cheatsheet", "tih-techniques"]
+}

@@ -1,0 +1,82 @@
+{
+  "id": "api-usage-meter",
+  "title": "API Usage Meter",
+  "type": "coding",
+  "difficulty": "medium",
+  "durationMinutes": 35,
+  "tags": ["design", "queue", "sliding-window", "hash-map"],
+  "rubric": "coding",
+  "signature": {
+    "kind": "class",
+    "entry": { "javascript": "UsageMeter" },
+    "compare": "exact",
+    "init": [{ "name": "windowSeconds", "type": "int" }],
+    "methods": {
+      "consume": {
+        "params": [
+          { "name": "apiKey", "type": "string" },
+          { "name": "timestamp", "type": "int" },
+          { "name": "units", "type": "int" },
+          { "name": "quota", "type": "int" }
+        ],
+        "returns": "bool"
+      },
+      "usage": {
+        "params": [
+          { "name": "apiKey", "type": "string" },
+          { "name": "timestamp", "type": "int" }
+        ],
+        "returns": "int"
+      }
+    }
+  },
+  "followUps": [
+    "What is the time and space complexity of each operation? What is the worst case for memory, and how would you bound it?",
+    "Your meter keeps every request in the window. How would you approximate it with constant memory per key (fixed windows, sliding-window counters, or a token bucket), and what accuracy do you give up?",
+    "The API runs on 50 servers behind a load balancer. How would you enforce one quota per key across all of them, and what happens when the shared store is slow or down?",
+    "Product wants monthly billing based on these units. Why shouldn't the rate-limiting meter also be the billing record, and what would you build instead?",
+    "How would you return useful rate-limit information to developers (headers, error bodies, retry hints) so their clients back off correctly?"
+  ],
+  "interviewer": {
+    "approach": "Hash map from API key to a FIFO queue of (timestamp, units) plus a running total per key. On each call for a key, pop from the front while the oldest entry's timestamp <= timestamp - windowSeconds, subtracting its units. consume compares total + units with quota; on success append and add. usage just expires and returns the total. Because timestamps never decrease, each event is pushed and popped at most once: amortized O(1) per call, O(events in window) space. Merging events with the same timestamp into one queue entry bounds memory at O(windowSeconds) per key. A circular buffer of per-second buckets is an equally good answer. Strong candidates mention approximate variants (sliding-window counter, token bucket) and the distributed version (Redis Lua script or INCR with expiry) unprompted.",
+    "hints": [
+      "For one key, what do you need to remember to answer 'how many units in the last W seconds'?",
+      "Timestamps never go backwards. When an old request leaves the window, can it ever come back in?",
+      "Keep a queue of requests and a running total per key; drop expired requests from the front before you answer."
+    ],
+    "pitfalls": [
+      "Recording a rejected request, so a client that's over quota stays blocked forever.",
+      "Off-by-one at the window edge: counting a request from exactly windowSeconds ago, or dropping one from windowSeconds - 1 ago.",
+      "Summing the whole history (or the whole queue) on every call: O(n) per call.",
+      "A single global queue for all keys, which makes expiry and totals tangled and slow.",
+      "Using the quota from the first call for the key instead of the one passed on each call.",
+      "Comparing usage + units < quota instead of <=, which rejects a request that exactly reaches the quota."
+    ]
+  },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "window_semantics",
+        "name": "Verifying the AI's window and quota semantics",
+        "weight": 0.15,
+        "signals": "Checked that the AI's code expires requests at exactly timestamp - windowSeconds (the old end is exclusive), does not record rejected requests, allows usage that exactly reaches the quota, and uses the per-call quota. Confirmed amortized O(1) rather than re-summing history, and could explain why the non-decreasing timestamps make the queue work.",
+        "levels": {
+          "1": "Accepted AI code with an off-by-one window or that records rejected requests.",
+          "2": "Found window or quota bugs only through failing hidden tests.",
+          "3": "Wrote boundary sequences (request at t, query at t + W - 1 and t + W) and a rejected-then-retry sequence before trusting the AI.",
+          "4": "Pinned down the window definition with the AI first, reviewed the expiry loop precisely, and discussed approximate and distributed variants."
+        },
+        "resources": ["tih-queue", "token-bucket", "stripe-rate-limiters"]
+      }
+    ],
+    "watchFor": [
+      "Expiry with < instead of <= (or vice versa), so a request exactly windowSeconds old is still counted.",
+      "Recording the request before checking the quota, or not rolling it back when rejected.",
+      "Re-summing a list of all requests on every call instead of keeping a running total.",
+      "Caching the quota per key from the first call.",
+      "Python answers that use list.pop(0) instead of a deque: O(n) per expiry."
+    ]
+  },
+  "resources": ["tih-queue", "tih-hash-table", "token-bucket", "stripe-rate-limiters", "big-o-cheatsheet"]
+}

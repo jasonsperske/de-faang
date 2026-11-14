@@ -1,0 +1,56 @@
+{
+  "id": "ai-agent-runtime",
+  "title": "Design a Runtime for AI Writing Agents",
+  "type": "system-design",
+  "difficulty": "hard",
+  "durationMinutes": 45,
+  "tags": ["system-design", "ai-agents", "llm", "streaming", "durable-execution"],
+  "rubric": "system-design",
+  "followUps": [
+    "A user starts a 40-second run in the browser extension, closes the laptop lid after 10 seconds, and opens the macOS app 2 minutes later. Walk through what happens to the run and what the user sees.",
+    "The primary LLM provider starts returning 429s and 30-second latencies during peak hours. What does your runtime do, step by step, and how does each agent decide what is an acceptable fallback?",
+    "An agent's tool call sends an email on the user's behalf. The worker crashes right after the tool returns, and the step is retried. How do you avoid sending the email twice?",
+    "A team ships a new version of their agent prompt that doubles its token usage and lowers quality. How would you have caught it before it reached all 40 million users, and how do you roll it back?",
+    "How do you keep one heavy user, or one buggy agent stuck in a loop, from running up a huge LLM bill or starving everyone else of provider capacity?"
+  ],
+  "interviewer": {
+    "approach": "Strong answers treat an agent run as a durable, resumable state machine whose steps are mostly waiting on slow external calls, and separate the control plane (run records, agent definitions, limits) from the data plane (step execution, streaming). Requirements: start run with agent id/version and context; stream tokens and step events with first token under ~1.5 s; runs of 5-60 s and up to 10 minutes; resume streaming after disconnect and on another device; cancel; per-user quotas and per-agent budgets; tools (internal document context, search, user-approved actions); multiple LLM providers with failover; versioned agents rolled out by flag with evals; full traces. Estimates: 2,000 runs/s at peak with ~25 s average duration gives ~50,000 concurrent runs; ~6 LLM calls per run gives ~12,000 LLM calls/s; ~3,000 tokens per call is ~36M tokens/s through providers, so provider quota (tokens per minute) is the binding constraint, not CPU; streaming connections ~50k concurrent. API: POST /runs (idempotency key, agent, input, client capabilities) returns run id; GET /runs/{id}/events?after=seq as SSE or WebSocket; POST /runs/{id}/cancel; tool approval callbacks. Execution: run records in a database; steps executed by workers via a durable execution engine or a hand-built equivalent (each step's input/output checkpointed in an event log keyed by run id and step number, so a crashed worker's run is picked up by another and completed steps are replayed from the log instead of re-executed). Workers are async I/O-bound (thousands of runs per process). Streaming: workers append token/step events with sequence numbers to a per-run stream (Redis Streams or Kafka) and a stateless streaming gateway fans out to connected clients; clients reconnect with last seq; final result persisted for later retrieval. LLM gateway: central service that holds provider keys, enforces per-provider token budgets (token buckets on TPM/RPM), priority queues (interactive over background), retries with jitter, hedged requests, circuit breakers, failover to a configured fallback model per agent, prompt caching, and cost accounting per run/user/agent. Tools: registry with schemas, per-tool timeouts and permissions, side-effecting tools require user approval and an idempotency key derived from run id + step so retries don't repeat actions; sandbox for untrusted execution; prompt-injection defences (treat tool output as data, restrict which tools an agent can call). Limits: per-user rate and daily token quotas, per-run step/token caps and wall-clock limits to kill loops, per-agent budgets with alerts. Rollout: immutable agent versions (prompt, model, tools, params), offline evals on a golden set, canary by flag with online metrics (latency, tokens, acceptance rate, thumbs), automatic rollback. Observability: a trace per run with each LLM/tool span, tokens, cost, latency; sampled transcripts with privacy controls. Cross-platform: one runtime API so browser, macOS and Windows clients share behaviour; on-device context gathering stays on the client and is sent as run input.",
+    "hints": [
+      "Where does an agent run spend most of its time? What does that imply for how you execute thousands of them at once?",
+      "If the worker running step 4 of a run dies, what do you need to have recorded to continue at step 4 rather than start over?",
+      "How does a token produced by an LLM on your server get to a client that may disconnect and reconnect, possibly on a different device?",
+      "Your LLM providers limit tokens per minute across your whole company. Who should own that budget, and how do you share it between agents and users?",
+      "Some tools change things in the outside world. What happens to them when a step is retried?"
+    ],
+    "pitfalls": [
+      "Running each agent loop synchronously inside the client's HTTP request, so a disconnect, deploy or timeout kills the run and nothing can resume.",
+      "One thread or container per run, which wastes resources on runs that are almost always waiting on the network.",
+      "Re-executing completed LLM calls and side-effecting tool calls on retry, doubling cost and actions.",
+      "Calling LLM providers directly from every agent service with their own keys and retry logic, so nothing enforces the shared rate limit or tracks cost.",
+      "Streaming without sequence numbers, so reconnecting clients miss or duplicate tokens.",
+      "No per-run step, token or time caps, so a looping agent runs until a human notices the bill.",
+      "Shipping prompt or model changes without versioning, evals or a canary.",
+      "Ignoring prompt injection through tool outputs or documents."
+    ],
+    "facts": [
+      "Clients: browser extensions (about 70% of usage), a macOS app and a Windows app. About 40 million users have access; about 3 million use agents on a typical weekday.",
+      "Peak load is about 2,000 new agent runs per second.",
+      "Most runs take 5 to 60 seconds (average about 25 seconds); background research-style runs can take up to 10 minutes. An average run makes about 6 LLM calls and 3 tool calls.",
+      "The user should see the first streamed token within 1.5 seconds of asking.",
+      "Users frequently close the tab, switch apps or lose connectivity mid-run. Results must not be lost, and the user can pick up the result on another of their devices.",
+      "The company uses two external LLM providers plus a small self-hosted model. Each provider enforces company-wide limits on requests and tokens per minute, and has occasional outages and latency spikes.",
+      "LLM spend is the largest cost of the product. Finance wants cost per run, per agent and per user, and a hard daily cap per user on the free plan.",
+      "Tools include fetching the current document's context (provided by the client), web search, the user's style guide, and actions such as inserting text or sending an email, which require the user's explicit approval.",
+      "About 30 teams build agents. Each agent version is a prompt, a model choice, a set of tools and parameters; teams ship new versions weekly behind feature flags.",
+      "Enterprise customers require that their text is not used for training and is retained for no more than 30 days."
+    ],
+    "deepDives": [
+      "Durable execution: run state machine, step checkpointing, crash recovery and resume",
+      "Streaming tokens to clients with sequence numbers and reconnection across devices",
+      "The LLM gateway: shared token budgets, priorities, retries, failover and cost accounting",
+      "Tool calling: approval, idempotency of side effects, timeouts and prompt-injection defence",
+      "Versioning, evals and safe rollout of agent changes"
+    ]
+  },
+  "resources": ["anthropic-building-agents", "temporal-durable-execution", "mcp-spec", "token-bucket", "kafka-docs", "stripe-idempotency", "sre-book", "ddia", "hellointerview"]
+}
