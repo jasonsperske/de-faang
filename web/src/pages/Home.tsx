@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { AppConfig, Language, Provider, QuestionSummary, SessionListItem, Strictness, Verbosity } from "../../../shared/types";
+import type { AppConfig, InterviewFormat, Language, Provider, QuestionSummary, SessionListItem, Strictness, Verbosity } from "../../../shared/types";
 import { LANGUAGES } from "../../../shared/types";
 import { api } from "../lib/api";
 import { DECISION_LABEL, STRICTNESS, VERBOSITY } from "../lib/format";
@@ -102,7 +102,10 @@ export function Home() {
                 <tr key={s.id} onClick={() => (location.hash = `#/session/${s.id}`)}>
                   <td>{s.title}</td>
                   <td>{new Date(s.createdAt).toLocaleString()}</td>
-                  <td>{STRICTNESS[s.config.strictness].label}</td>
+                  <td>
+                    {STRICTNESS[s.config.strictness].label}
+                    {s.config.format === "ai" ? " · ✦ AI" : ""}
+                  </td>
                   <td>{s.config.provider}</td>
                   <td>
                     <span className={`status ${s.status}`}>{s.status.replace("_", " ")}</span>
@@ -130,14 +133,29 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
     const last = lastLanguage();
     return last && q.languages?.includes(last) ? last : "python";
   });
+  const [format, setFormat] = useState<InterviewFormat>("classic");
+  const policies = config.aiPolicies;
+  const [policyId, setPolicyId] = useState(policies.find((p) => p.id === "guarded")?.id ?? policies[0]?.id ?? "");
+  const policy = policies.find((p) => p.id === policyId);
+  const [prompt, setPrompt] = useState(policy?.prompt ?? "");
+  const edited = policy !== undefined && prompt.trim() !== policy.prompt.trim();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ai = q.type === "coding" && format === "ai";
 
   const start = async () => {
     setBusy(true);
     setError(null);
     try {
-      const v = await api.createSession(q.id, { provider, strictness, verbosity, language: q.type === "coding" ? language : undefined });
+      const v = await api.createSession(q.id, {
+        provider,
+        strictness,
+        verbosity,
+        language: q.type === "coding" ? language : undefined,
+        format: q.type === "coding" ? format : undefined,
+        aiPolicy: ai ? policyId : undefined,
+        aiSystemPrompt: ai ? prompt : undefined,
+      });
       if (q.type === "coding") rememberLanguage(language);
       location.hash = `#/session/${v.session.id}`;
     } catch (e) {
@@ -153,6 +171,66 @@ function SetupDialog({ q, config, onClose }: { q: QuestionSummary; config: AppCo
         <p className="muted">
           {q.type === "coding" ? "Coding" : "System design"} · {q.difficulty} · about {q.durationMinutes} minutes{q.parts ? ` · ${q.parts} parts, revealed one at a time` : ""}
         </p>
+
+        {q.type === "coding" && (
+          <>
+            <label className="field-label">Format</label>
+            <div className="options">
+              <label className={`option ${format === "classic" ? "on" : ""}`}>
+                <input type="radio" name="format" checked={format === "classic"} onChange={() => setFormat("classic")} />
+                <div>
+                  <strong>Classic</strong>
+                  <div className="muted small">Just you, the editor, and the interviewer.</div>
+                </div>
+              </label>
+              <label className={`option ${format === "ai" ? "on" : ""}`}>
+                <input type="radio" name="format" checked={format === "ai"} onChange={() => setFormat("ai")} />
+                <div>
+                  <strong>✦ AI-assisted</strong>
+                  <div className="muted small">You get an AI assistant. Graded on how you direct it and check its work.</div>
+                </div>
+              </label>
+            </div>
+            {ai && (
+              <>
+                <label className="field-label">AI helpfulness</label>
+                <div className="options">
+                  {policies.map((p) => (
+                    <label key={p.id} className={`option ${policyId === p.id ? "on" : ""}`}>
+                      <input
+                        type="radio"
+                        name="policy"
+                        checked={policyId === p.id}
+                        onChange={() => {
+                          setPolicyId(p.id);
+                          setPrompt(p.prompt);
+                        }}
+                      />
+                      <div>
+                        <strong>{p.label}</strong>
+                        <div className="muted small">{p.blurb}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+                <details className="ai-prompt">
+                  <summary className="small">
+                    Edit the assistant's instructions{edited ? " (edited)" : ""}
+                  </summary>
+                  <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} spellCheck={false} />
+                  <div className="row gap small muted">
+                    Saved with this round only. Edit <code>ai-policies/{policyId}.md</code> to change the preset.
+                    {edited && (
+                      <button className="ghost small" onClick={() => setPrompt(policy!.prompt)}>
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </details>
+              </>
+            )}
+          </>
+        )}
 
         <label className="field-label">Interviewer</label>
         <div className="options">

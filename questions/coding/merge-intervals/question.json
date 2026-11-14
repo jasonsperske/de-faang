@@ -33,5 +33,32 @@
       "Mutating the input in a way that affects the result."
     ]
   },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "assumption_checks",
+        "name": "Checking the AI's assumptions",
+        "weight": 0.15,
+        "signals": "Checked that the AI's code sorts by start first (the input isn't sorted), merges touching intervals like [1,4] and [4,5], handles containment like [1,10] with [2,3] by taking the max end, and handles empty and single-interval input.",
+        "levels": {
+          "1": "Adopted AI code that fails containment or unsorted input without noticing.",
+          "2": "Found an AI bug only after a failing hidden-style case, or by luck.",
+          "3": "Tested containment, touching and unsorted inputs deliberately before trusting the AI's code.",
+          "4": "Spotted the risky line in the AI's code on reading it and confirmed it with a minimal counterexample."
+        },
+        "resources": [
+          "tih-interval",
+          "tih-sorting"
+        ]
+      }
+    ],
+    "watchFor": [
+      "Setting the merged end to the current interval's end instead of max(end, current end), which breaks containment ([1,10],[2,3]).",
+      "Using < instead of <= so touching intervals ([1,4],[4,5]) aren't merged.",
+      "Assuming the input is sorted, or sorting by end instead of start.",
+      "Mutating the input intervals in place in a way the caller doesn't expect."
+    ]
+  },
   "resources": ["tih-interval", "tih-sorting", "big-o-cheatsheet", "tih-techniques"]
 }

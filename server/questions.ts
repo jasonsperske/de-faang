@@ -64,6 +64,26 @@ const PartMeta = z.object({
   interviewer: PartNotes,
 });
 
+/** A rubric dimension (same shape as in rubrics/*.json). */
+export const RubricDimension = z.object({
+  id: z.string().regex(/^[a-z0-9_]+$/),
+  name: z.string(),
+  weight: z.number().positive(),
+  signals: z.string(),
+  levels: z.object({ "1": z.string(), "2": z.string(), "3": z.string(), "4": z.string() }),
+  resources: z.array(z.string()).default([]),
+});
+
+/** How AI-assisted rounds of this question are graded and watched. */
+const AiSection = z.object({
+  /** Rubric used for AI-assisted rounds (rubrics/<id>.json). */
+  rubric: z.string().default("ai-coding"),
+  /** Question-specific rubric dimensions added to that rubric. Weights are relative to the rubric's (which sum to 1). */
+  dimensions: z.array(RubricDimension).default([]),
+  /** Known ways AI assistants go wrong on this question; the interviewer and evaluator check whether the candidate caught them. */
+  watchFor: z.array(z.string()).default([]),
+});
+
 const QuestionMeta = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
@@ -91,6 +111,8 @@ const QuestionMeta = z
       deepDives: z.array(z.string()).default([]),
     }),
     resources: z.array(z.string()).default([]),
+    /** Coding questions: settings for AI-assisted rounds. */
+    ai: AiSection.default({ rubric: "ai-coding", dimensions: [], watchFor: [] }),
   })
   .refine((m) => m.type !== "coding" || Boolean(m.signature) !== Boolean(m.parts), "A coding question needs either a signature or parts (not both).")
   .refine((m) => !m.parts || new Set(m.parts.map((p) => p.id)).size === m.parts.length, "Part ids must be unique.");

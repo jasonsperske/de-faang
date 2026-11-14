@@ -6,7 +6,8 @@ import { getProvider, type ContentPart } from "./llm/index.ts";
 import { ROOT } from "./paths.ts";
 import type { Question } from "./questions.ts";
 import { elapsedMinutes, summarizeRun } from "./interviewer.ts";
-import { designPng, lastSubmit, listRuns, readTranscript, transcriptMarkdown, writeEvidence } from "./sessions.ts";
+import { designPng, lastSubmit, listRuns, readAiLog, readTranscript, transcriptMarkdown, writeEvidence } from "./sessions.ts";
+import { aiTimeline, aiUsage, usageLine } from "./assistant.ts";
 
 interface Rubric {
   id: string;
@@ -22,6 +23,22 @@ interface Resource {
 }
 
 export const loadRubric = (id: string): Rubric => JSON.parse(fs.readFileSync(path.join(ROOT, "rubrics", `${id}.json`), "utf8"));
+
+/**
+ * The rubric for a session. AI-assisted rounds use the question's AI rubric plus its
+ * question-specific AI dimensions; weights are normalised to sum to 1.
+ */
+export function rubricFor(q: Question, state: SessionState): Rubric {
+  if (state.config.format !== "ai") return loadRubric(q.meta.rubric);
+  const base = loadRubric(q.meta.ai.rubric);
+  const dims = [...base.dimensions, ...q.meta.ai.dimensions];
+  const total = dims.reduce((a, d) => a + d.weight, 0);
+  return {
+    ...base,
+    name: q.meta.ai.dimensions.length ? `${base.name} + ${q.meta.title}-specific criteria` : base.name,
+    dimensions: dims.map((d) => ({ ...d, weight: Math.round((d.weight / total) * 1000) / 1000 })),
+  };
+}
 export const loadResources = (): Resource[] => JSON.parse(fs.readFileSync(path.join(ROOT, "resources", "resources.json"), "utf8"));
 
 interface RawEvaluation {
@@ -138,6 +155,15 @@ export function buildPacket(q: Question, state: SessionState): string {
         `## Submission test results: ${submit.passed}/${submit.total} passed (public + hidden${q.multipart ? ", every part reached, run on the final code" : ""})\n${submit.ok ? lines.join("\n") : `Did not run: ${submit.compileError}`}`,
       );
     }
+    if (state.config.format === "ai") {
+      const log = readAiLog(state.id);
+      const watch = q.meta.ai.watchFor;
+      s.push(
+        `## AI assistant (AI-assisted round)\nHelpfulness policy: ${state.config.aiPolicy}. The assistant's instructions:\n\n\`\`\`\n${state.config.aiSystemPrompt ?? ""}\n\`\`\`\n\nUsage: ${usageLine(aiUsage(log, state.code?.[lang] ?? ""))}${
+          watch.length ? `\n\nKnown ways AI assistants go wrong on this question (check whether the candidate caught them):\n${watch.map((w) => `- ${w}`).join("\n")}` : ""
+        }\n\n### Timeline of AI use\n${aiTimeline(state, log) || "The candidate didn't use the assistant."}`,
+      );
+    }
     const history = runs.filter((r) => !r.submit);
     s.push(`## Run history (${history.filter((r) => !r.partSubmit).length} runs${q.multipart ? ", plus part hand-ins" : ""})\n${history.map(summarizeRun).join("\n") || "The candidate never ran their code before submitting."}`);
   } else {
@@ -153,7 +179,7 @@ export function buildPacket(q: Question, state: SessionState): string {
 }
 
 export async function evaluate(q: Question, state: SessionState): Promise<{ evaluation: Evaluation; report: string }> {
-  const rubric = loadRubric(q.meta.rubric);
+  const rubric = rubricFor(q, state);
   const resources = loadResources();
   const provider = getProvider(state.config.provider);
   const packet = buildPacket(q, state);
@@ -163,7 +189,12 @@ export async function evaluate(q: Question, state: SessionState): Promise<{ eval
 Principles:
 - Grade against the real FAANG bar regardless of practice mode. In coach or standard mode, hints and help are expected, but heavy reliance on hints lowers the problem-solving score. Say so kindly.
 - Every score must be justified with evidence: short quotes or concrete observations from the packet (code lines, transcript, test results, follow-up answers). Never invent evidence.
-- Hidden test results are ground truth for correctness.
+- Hidden test results are ground truth for correctness.${
+    state.config.format === "ai"
+      ? `
+- This was an AI-ASSISTED round: the candidate had an AI assistant and using it was allowed. Judge how they used it (the prompts, what they attached, what they adopted, how they verified it) against the rubric. Using AI is not a negative in itself; adopting AI output without understanding or checking it is. AI-written code counts toward correctness, but ownership must be shown in the transcript and follow-up answers. Quote prompts and timeline entries as evidence.`
+      : ""
+  }
 - Be direct and kind. The goal is to take the fear out of these interviews: name what went well, then give specific, actionable improvements.
 - Score each rubric dimension on the 1–4 scale, using every dimension exactly once.
 - For followUpFeedback, assess each written follow-up answer (including unanswered ones).
@@ -208,6 +239,7 @@ ${resources.map((r) => `- ${r.id} — ${r.title} — ${r.topics.join(", ")}`).jo
   const totalWeight = dims.reduce((a, d) => a + d.weight, 0);
   const weightedScore = Math.round((dims.reduce((a, d) => a + d.score * d.weight, 0) / totalWeight) * 100) / 100;
   const byId = new Map(resources.map((r) => [r.id, r]));
+  const usage = state.config.format === "ai" ? aiUsage(readAiLog(state.id), state.code?.[state.config.language ?? "python"] ?? "") : undefined;
   const evaluation: Evaluation = {
     summary: raw.summary,
     decision: decisionFor(weightedScore),
@@ -222,6 +254,8 @@ ${resources.map((r) => `- ${r.id} — ${r.title} — ${r.topics.join(", ")}`).jo
       const res = byId.get(r.id);
       return res ? [{ id: res.id, title: res.title, url: res.url, why: r.why }] : [];
     }),
+    aiUsage: usage,
+    rubric: rubric.name,
     provider: provider.id,
     model: provider.model,
   };
@@ -233,11 +267,11 @@ export function renderReport(q: Question, state: SessionState, e: Evaluation): s
   return `# ${q.meta.title}: interview feedback
 
 **Result: ${DECISION_LABEL[e.decision]}** (weighted score ${e.weightedScore.toFixed(2)} / 4)
-Mode: ${state.config.strictness} · ${q.meta.type}${state.config.language && q.meta.type === "coding" ? ` · ${state.config.language}` : ""} · evaluated by ${e.provider} (${e.model}) on ${new Date().toISOString().slice(0, 10)}
+Mode: ${state.config.strictness}${state.config.format === "ai" ? ` · AI-assisted (${state.config.aiPolicy})` : ""} · ${q.meta.type}${state.config.language && q.meta.type === "coding" ? ` · ${state.config.language}` : ""} · evaluated by ${e.provider} (${e.model}) on ${new Date().toISOString().slice(0, 10)}
 
 ${e.summary}
-
-## Scorecard
+${e.aiUsage ? `\n## AI assistant usage\n${usageLine(e.aiUsage)}\n` : ""}
+## Scorecard${e.rubric ? ` (${e.rubric})` : ""}
 
 | Dimension | Score | Weight |
 |---|---|---|

@@ -32,5 +32,32 @@
       "Sorting the array and losing the original indices."
     ]
   },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "edge_case_scrutiny",
+        "name": "Scrutinising the AI's edge cases",
+        "weight": 0.15,
+        "signals": "Checked AI-written code against duplicate values ([3,3] with target 6), an element pairing with itself, negatives and zeros; noticed if the AI sorted the array and lost the original indices, or returned values or 1-based indices instead of 0-based indices.",
+        "levels": {
+          "1": "Adopted AI code that fails on duplicates or returns the wrong thing, without noticing.",
+          "2": "Ran the samples only; an AI edge-case bug survived or was found by accident.",
+          "3": "Tested the duplicate and self-pairing cases deliberately and fixed or confirmed the AI's handling.",
+          "4": "Predicted where the AI's code could break before running it and proved it with targeted inputs."
+        },
+        "resources": [
+          "tih-hash-table",
+          "tih-array"
+        ]
+      }
+    ],
+    "watchFor": [
+      "Returning the two values, or 1-based indices, instead of the 0-based indices.",
+      "A sort + two-pointer answer that loses the original indices.",
+      "Inserting into the map before checking for the complement, so an element pairs with itself (target 6 with a single 3).",
+      "Claiming O(n) for a nested-loop solution, or O(1) space for the hash-map one."
+    ]
+  },
   "resources": ["tih-hash-table", "tih-array", "big-o-cheatsheet", "tih-techniques"]
 }

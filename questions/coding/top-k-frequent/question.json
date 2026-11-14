@@ -32,5 +32,33 @@
       "Off-by-one in bucket sizes (frequency can equal n)."
     ]
   },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "complexity_scrutiny",
+        "name": "Questioning the AI's complexity claims",
+        "weight": 0.15,
+        "signals": "Checked the complexity the AI stated rather than repeating it: a heap of size k is O(n log k), sorting all counts is O(n log n), bucket sort is O(n). Picked the approach that meets the requirement and could explain why; verified the result returns elements, not counts.",
+        "levels": {
+          "1": "Repeated an incorrect AI complexity claim, or couldn't say what the code costs.",
+          "2": "Roughly right on complexity but didn't examine the AI's claim or the alternatives.",
+          "3": "Stated the correct complexity of the adopted approach and compared it with one alternative.",
+          "4": "Caught an overstated AI claim, or steered the AI to the better approach, with a precise analysis."
+        },
+        "resources": [
+          "tih-heap",
+          "py-heapq",
+          "big-o-cheatsheet"
+        ]
+      }
+    ],
+    "watchFor": [
+      "Claiming O(n) for a heap-based solution, or O(n log k) for one that sorts every count.",
+      "Bucket-sort off-by-one: a frequency can be as large as n, so n + 1 buckets are needed.",
+      "Returning the counts, or (element, count) pairs, instead of the elements.",
+      "Pushing every element into an unbounded heap and popping k times: O(n log n), not O(n log k)."
+    ]
+  },
   "resources": ["tih-heap", "tih-hash-table", "py-heapq", "big-o-cheatsheet"]
 }

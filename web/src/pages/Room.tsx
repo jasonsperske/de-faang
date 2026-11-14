@@ -234,6 +234,7 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
               code={codeByLang[language] ?? ""}
               readOnly={readOnly}
               lastSubmit={view.lastSubmit ?? view.lastPartResult}
+              ai={session.config.format === "ai" ? { log: view.ai ?? [], policy: session.config.aiPolicy } : undefined}
               onLanguage={(l) => {
                 setLanguage(l);
                 scheduleSave();
@@ -304,6 +305,11 @@ function RoomHeader({ view, children }: { view: SessionView; children?: React.Re
         <strong>{question.title}</strong>
         <span className={`diff ${question.difficulty}`}>{question.difficulty}</span>
         <span className="badge">{STRICTNESS[session.config.strictness].label}</span>
+        {session.config.format === "ai" && (
+          <span className="badge ai" title={`AI assistant: ${session.config.aiPolicy}`}>
+            ✦ AI-assisted
+          </span>
+        )}
         {question.parts && session.status === "in_progress" && (
           <span className="badge">
             Part {(question.part ?? 0) + 1} of {question.parts}

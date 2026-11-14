@@ -15,6 +15,15 @@ for (const q of qs.values()) {
   for (const r of q.meta.resources) if (!resources.has(r)) problems.push(`unknown resource id "${r}"`);
   if (!fs.existsSync(path.join(ROOT, "rubrics", `${q.meta.rubric}.json`))) problems.push(`unknown rubric "${q.meta.rubric}"`);
   if (q.meta.type === "coding") {
+    const aiRubric = path.join(ROOT, "rubrics", `${q.meta.ai.rubric}.json`);
+    if (!fs.existsSync(aiRubric)) problems.push(`unknown AI rubric "${q.meta.ai.rubric}"`);
+    else {
+      const baseIds = new Set((JSON.parse(fs.readFileSync(aiRubric, "utf8")) as { dimensions: { id: string }[] }).dimensions.map((d) => d.id));
+      for (const d of q.meta.ai.dimensions) {
+        if (baseIds.has(d.id)) problems.push(`AI dimension "${d.id}" clashes with a dimension of rubric "${q.meta.ai.rubric}"`);
+        for (const r of d.resources) if (!resources.has(r)) problems.push(`AI dimension "${d.id}": unknown resource id "${r}"`);
+      }
+    }
     if (!q.reference) problems.push("missing reference.py");
     else {
       for (const p of q.parts) {

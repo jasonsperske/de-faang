@@ -71,5 +71,34 @@
   "interviewer": {
     "approach": "Two independent string problems on the same kind of input. Part 1 is a warm-up (canonical keys + combinatorics); expect it done in about 15 minutes so there is real time for part 2, which is the harder word-break DP."
   },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "cross_part_judgement",
+        "name": "Judging AI output across both parts",
+        "weight": 0.15,
+        "signals": "Part 1: caught AI code that counts index pairs (so duplicate words inflate the count) or sums in a 32-bit integer. Part 2: checked that the AI's word-break excludes the word itself as a single piece, memoises instead of recursing exponentially, and returns each compound word once. Reused part 1 work sensibly and kept prompts focused on the current part.",
+        "levels": {
+          "1": "Adopted AI code with the duplicate-counting or self-match bug and didn't notice.",
+          "2": "Fixed AI bugs only after failing tests; unclear what they checked themselves.",
+          "3": "Tested duplicates in part 1 and the self-match and performance traps in part 2 before handing in.",
+          "4": "Anticipated the AI's likely mistakes in each part, directed it around them, and explained the DP precisely."
+        },
+        "resources": [
+          "tih-string",
+          "tih-dynamic-programming",
+          "tih-hash-table"
+        ]
+      }
+    ],
+    "watchFor": [
+      "Part 1: counting pairs of indices instead of distinct words, so repeated words inflate the count.",
+      "Part 1: accumulating the count in a 32-bit int in Java, C++, C or Go.",
+      "Part 2: letting a word match itself as a single piece, so every word is reported as compound.",
+      "Part 2: plain recursion without memoisation, which times out on the 'a' ... 'aaa…ab' hidden test.",
+      "Part 2: returning a duplicated compound word twice."
+    ]
+  },
   "resources": ["tih-hash-table", "tih-string", "tih-dynamic-programming", "tih-trie", "big-o-cheatsheet", "tih-techniques"]
 }

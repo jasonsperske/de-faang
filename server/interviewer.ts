@@ -1,4 +1,5 @@
-import type { ChatEntry, SessionState, Strictness, Verbosity } from "../shared/types.ts";
+import type { AiLogEntry, ChatEntry, SessionState, Strictness, Verbosity } from "../shared/types.ts";
+import { aiSnapshot } from "./assistant.ts";
 import { LANGUAGES } from "../shared/types.ts";
 import type { LLMMessage } from "./llm/index.ts";
 import type { Question } from "./questions.ts";
@@ -100,8 +101,21 @@ ${
 }
 
 ${question}
-
+${state.config.format === "ai" ? `\n${aiRoundSection(q, state)}\n` : ""}
 Follow-up questions are asked in writing after the candidate submits. Don't ask them during the round.`;
+}
+
+/** AI-assisted rounds: how the interviewer should treat the candidate's AI assistant. */
+function aiRoundSection(q: Question, state: SessionState): string {
+  const watch = q.meta.ai.watchFor;
+  return `=== AI-ASSISTED ROUND ===
+The candidate has an AI coding assistant in their editor (helpfulness policy: ${state.config.aiPolicy}). Using it is allowed and expected; this round assesses how well they direct the AI and how critically they use its output, as well as the solution itself.
+- The workspace snapshot shows their recent AI prompts, the replies, and whether they inserted, copied or pasted AI code.
+- Don't discourage AI use, and don't do the assistant's job for them. Your hint ladder still applies to the problem itself.
+- Probe ownership the way a real interviewer would: when they adopt AI-written code, ask them to walk you through it, its complexity, or an edge case. Ask what they checked before trusting it.
+- If they accept AI output without reading or testing it, a real interviewer would notice. In standard and strict modes, ask a neutral question ("How do you know this handles X?"). In coach mode, you may point out the habit directly.${
+    watch.length ? `\n\nKnown ways AI assistants go wrong on this question (private; see whether the candidate catches them, don't reveal them):\n${watch.map((w) => `- ${w}`).join("\n")}` : ""
+  }`;
 }
 
 export function elapsedMinutes(state: SessionState): number {
@@ -120,7 +134,7 @@ export function summarizeRun(r: RunRecord): string {
   return `${label} (${r.language}): ${res.passed}/${res.total} graded cases passed${custom ? `, ${custom} custom input(s)` : ""}.${detail ? `\n${detail}` : ""}`;
 }
 
-export function workspaceSnapshot(q: Question, state: SessionState, runs: RunRecord[]): string {
+export function workspaceSnapshot(q: Question, state: SessionState, runs: RunRecord[], aiLog?: AiLogEntry[]): string {
   const parts = [`Elapsed: ${elapsedMinutes(state)} of ${q.meta.durationMinutes} minutes. Hints requested so far: ${state.hintsRequested}.`];
   if (q.multipart) {
     const part = state.part ?? 0;
@@ -141,6 +155,7 @@ export function workspaceSnapshot(q: Question, state: SessionState, runs: RunRec
     parts.push(`Language: ${label}\nCurrent code:\n\`\`\`\n${numbered}\n\`\`\``);
     const recent = runs.filter((r) => !r.submit && !r.partSubmit).slice(-2);
     parts.push(recent.length ? `Recent test runs:\n${recent.map(summarizeRun).join("\n")}` : "No test runs yet.");
+    if (aiLog) parts.push(aiSnapshot(state, aiLog));
   } else {
     parts.push(`Candidate notes (markdown):\n${state.design?.markdown?.trim() || "(empty)"}`);
     parts.push(`Whiteboard (shapes and arrows extracted from the diagram):\n${state.design?.diagramSummary?.trim() || "(empty)"}`);

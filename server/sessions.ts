@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import type {
+  AiLogEntry,
   ChatEntry,
   Evaluation,
   Language,
@@ -21,6 +22,7 @@ import { getQuestion, loadQuestions } from "./questions.ts";
  *     session.json          state + config
  *     prompt.md             the question as presented
  *     transcript.jsonl      interviewer chat, one entry per line
+ *     ai-log.jsonl          AI-assisted rounds: assistant prompts, replies, and inserts/copies/pastes
  *     workspace/            live autosaved work (solution.<ext>, design.md, design.excalidraw, design.png)
  *     runs/run-NNN.json     every Run: code, language, results
  *     evidence/             frozen packet assembled at submit + follow-up answers
@@ -89,6 +91,21 @@ export function appendTranscript(id: string, entry: Omit<ChatEntry, "at">): Chat
   const full: ChatEntry = { ...entry, at: new Date().toISOString() };
   fs.appendFileSync(path.join(sessionDir(id), "transcript.jsonl"), JSON.stringify(full) + "\n");
   return full;
+}
+
+export function appendAiLog(id: string, entry: AiLogEntry): AiLogEntry {
+  fs.appendFileSync(path.join(sessionDir(id), "ai-log.jsonl"), JSON.stringify(entry) + "\n");
+  return entry;
+}
+
+export function readAiLog(id: string): AiLogEntry[] {
+  const f = path.join(sessionDir(id), "ai-log.jsonl");
+  if (!fs.existsSync(f)) return [];
+  return fs
+    .readFileSync(f, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as AiLogEntry);
 }
 
 export function readTranscript(id: string): ChatEntry[] {

@@ -37,7 +37,20 @@ export function Report({ sessionId, folder, onShowWorkspace }: { sessionId: stri
       </div>
       <Markdown className="summary">{e.summary}</Markdown>
 
-      <h2>Scorecard</h2>
+      {e.aiUsage && (
+        <>
+          <h2>AI assistant usage</h2>
+          <div className="ai-stats">
+            <Stat n={e.aiUsage.prompts} label="prompts" sub={`${e.aiUsage.promptsWithCode} with code, ${e.aiUsage.promptsWithProblem} with the problem`} />
+            <Stat n={e.aiUsage.codeBlocksOffered} label="code blocks offered" />
+            <Stat n={e.aiUsage.inserts + e.aiUsage.replaces + e.aiUsage.copies} label="blocks used" sub={`${e.aiUsage.inserts} inserted, ${e.aiUsage.replaces} replaced, ${e.aiUsage.copies} copied`} />
+            <Stat n={e.aiUsage.pastes} label="pastes" sub={`${e.aiUsage.pastesFromAi} from the AI`} />
+            <Stat n={`${Math.round(e.aiUsage.aiShare * 100)}%`} label="of final code from AI" sub={`${e.aiUsage.aiLinesInFinal} of ${e.aiUsage.finalLines} lines verbatim`} />
+          </div>
+        </>
+      )}
+
+      <h2>Scorecard{e.rubric ? <span className="muted small"> · {e.rubric}</span> : null}</h2>
       <div className="dims">
         {e.dimensions.map((d) => (
           <div key={d.id} className="dim">
@@ -131,6 +144,16 @@ export function Report({ sessionId, folder, onShowWorkspace }: { sessionId: stri
       <p className="muted small">
         The full packet, evidence, and <code>report.md</code> are saved in <code>{folder}/</code>.
       </p>
+    </div>
+  );
+}
+
+function Stat({ n, label, sub }: { n: number | string; label: string; sub?: string }) {
+  return (
+    <div className="ai-stat">
+      <b>{n}</b>
+      <span>{label}</span>
+      {sub && <span className="muted small">{sub}</span>}
     </div>
   );
 }

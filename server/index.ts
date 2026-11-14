@@ -15,6 +15,7 @@ import { getProvider, LLMError, providerInfo } from "./llm/index.ts";
 import { buildChatMessages, interviewerSystemPrompt, summarizeRun, workspaceSnapshot } from "./interviewer.ts";
 import { evaluate } from "./evaluator.ts";
 import * as S from "./sessions.ts";
+import { aiTimeline, aiUsage, assistantMessages, assistantSystemPrompt, composePrompt, DEFAULT_POLICY, loadPolicies, usageLine } from "./assistant.ts";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" }, bodyLimit: 25 * 1024 * 1024 });
 
@@ -31,7 +32,7 @@ const IdParams = z.object({ id: z.string() });
 
 app.get("/api/config", async (): Promise<AppConfig> => {
   const runner = await checkRunner();
-  return { providers: providerInfo(), runner: runnerMode(), runnerReady: runner.ready, runnerMessage: runner.message, pendingLanguages: runner.pending };
+  return { providers: providerInfo(), runner: runnerMode(), runnerReady: runner.ready, runnerMessage: runner.message, pendingLanguages: runner.pending, aiPolicies: loadPolicies() };
 });
 
 app.get("/api/questions", async () => [...loadQuestions().values()].map(summarize));
@@ -55,6 +56,7 @@ function view(id: string): SessionView {
     folder: path.relative(ROOT, path.join(SESSIONS_DIR, id)),
     lastSubmit,
     lastPartResult,
+    ai: session.config.format === "ai" ? S.readAiLog(id) : undefined,
   };
 }
 
@@ -73,10 +75,24 @@ app.post("/api/sessions", async (req) => {
       strictness: z.enum(["strict", "standard", "coach"]),
       verbosity: z.enum(["terse", "normal", "detailed"]),
       language: Lang.optional(),
+      format: z.enum(["classic", "ai"]).default("classic"),
+      aiPolicy: z.string().optional(),
+      aiSystemPrompt: z.string().max(20_000).optional(),
     })
     .parse(req.body);
   getProvider(body.provider); // fail fast if the provider isn't configured
   const { questionId, ...config } = body;
+  if (config.format === "ai") {
+    if (getQuestion(questionId).meta.type !== "coding") throw Object.assign(new Error("AI-assisted rounds are for coding questions."), { statusCode: 400 });
+    const policies = loadPolicies();
+    const policy = policies.find((p) => p.id === (config.aiPolicy ?? DEFAULT_POLICY)) ?? policies[0];
+    if (!policy && !config.aiSystemPrompt?.trim()) throw Object.assign(new Error("No AI policies found in ai-policies/."), { statusCode: 500 });
+    config.aiPolicy = config.aiSystemPrompt?.trim() && config.aiSystemPrompt.trim() !== policy?.prompt ? `${policy?.id ?? "custom"} (edited)` : policy!.id;
+    config.aiSystemPrompt = config.aiSystemPrompt?.trim() || policy!.prompt;
+  } else {
+    delete config.aiPolicy;
+    delete config.aiSystemPrompt;
+  }
   const state = S.createSession(questionId, config);
   return view(state.id);
 });
@@ -157,6 +173,7 @@ app.post("/api/sessions/:id/submit", async (req) => {
     S.writeEvidence(id, `submission.${ext}`, ws.code);
     S.writeEvidence(id, "test-results.json", JSON.stringify(result, null, 2));
     S.writeEvidence(id, "run-history.md", S.listRuns(id).map(summarizeRun).join("\n\n") + "\n");
+    if (state.config.format === "ai") writeAiEvidence(state, ws.code);
   } else if ("markdown" in ws) {
     S.writeEvidence(id, "design.md", ws.markdown);
     if (ws.scene) S.writeEvidence(id, "design.excalidraw", JSON.stringify({ type: "excalidraw", version: 2, source: "de-faang", ...(ws.scene as object) }, null, 2));
@@ -174,6 +191,18 @@ app.post("/api/sessions/:id/submit", async (req) => {
   S.writeEvidence(id, "transcript.md", S.transcriptMarkdown(S.readTranscript(id)));
   return view(id);
 });
+
+/** AI-assisted rounds: the assistant's instructions, the full log, and usage stats, frozen at submit. */
+function writeAiEvidence(state: ReturnType<typeof S.loadState>, finalCode: string) {
+  const log = S.readAiLog(state.id);
+  const usage = aiUsage(log, finalCode);
+  S.writeEvidence(state.id, "ai-log.jsonl", log.map((e) => JSON.stringify(e)).join("\n") + (log.length ? "\n" : ""));
+  S.writeEvidence(
+    state.id,
+    "ai-usage.md",
+    `# AI assistant usage\n\nHelpfulness policy: ${state.config.aiPolicy}\n\n${usageLine(usage)}\n\n## System prompt\n\n\`\`\`\n${assistantSystemPrompt(state.config.aiSystemPrompt ?? "")}\n\`\`\`\n\n## Timeline\n\n${aiTimeline(state, log, 100_000) || "_The candidate didn't use the assistant._"}\n`,
+  );
+}
 
 const allTests = (p: Question["parts"][number]): LabeledCase[] => [
   ...p.tests.public.map((t) => ({ kind: "public" as const, test: t })),
@@ -248,6 +277,76 @@ app.post("/api/sessions/:id/evaluate", async (req) => {
   }
 });
 
+// ---------------------------------------------------------------- AI assistant (AI-assisted rounds)
+
+const assistantBusy = new Set<string>();
+
+function aiSession(id: string) {
+  const state = S.loadState(id);
+  if (state.config.format !== "ai") throw Object.assign(new Error("This round doesn't have an AI assistant."), { statusCode: 400 });
+  if (state.status !== "in_progress") throw Object.assign(new Error("The round is over; the assistant is closed."), { statusCode: 409 });
+  return state;
+}
+
+app.post("/api/sessions/:id/assistant", async (req, reply) => {
+  const { id } = IdParams.parse(req.params);
+  const body = z
+    .object({
+      text: z.string().min(1).max(20_000),
+      attachProblem: z.boolean(),
+      attachCode: z.boolean(),
+      language: Lang,
+      code: z.string().max(200_000),
+    })
+    .parse(req.body);
+  const state = aiSession(id);
+  const q = getQuestion(state.questionId);
+  if (assistantBusy.has(id)) throw Object.assign(new Error("The assistant is still replying."), { statusCode: 429 });
+  if (!body.text.trim()) throw Object.assign(new Error("Empty message"), { statusCode: 400 });
+  S.saveCode(state, body.language, body.code);
+
+  const sent = composePrompt(q, state, body);
+  const messages = assistantMessages(S.readAiLog(id), sent);
+  const prompt = S.appendAiLog(id, { kind: "prompt", at: new Date().toISOString(), text: body.text, attachProblem: body.attachProblem, attachCode: body.attachCode, language: body.language, sent });
+
+  const send = sse(reply);
+  const abort = new AbortController();
+  reply.raw.on("close", () => abort.abort());
+  assistantBusy.add(id);
+  try {
+    send({ prompt });
+    const provider = getProvider(state.config.provider);
+    const text = await provider.chat({ system: assistantSystemPrompt(state.config.aiSystemPrompt ?? ""), messages, effort: "medium" }, (delta) => send({ delta }), abort.signal);
+    const entry = S.appendAiLog(id, { kind: "response", at: new Date().toISOString(), text });
+    send({ done: true, entry });
+  } catch (err) {
+    const msg = err instanceof LLMError ? err.message : `Assistant error: ${(err as Error).message}`;
+    app.log.error(err);
+    S.appendAiLog(id, { kind: "response", at: new Date().toISOString(), text: "", error: msg });
+    send({ error: msg });
+  } finally {
+    assistantBusy.delete(id);
+    reply.raw.end();
+  }
+});
+
+/** What the candidate did with the assistant's output: insert, replace, copy, paste, or a new chat. */
+app.post("/api/sessions/:id/ai-events", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const e = z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.enum(["insert", "replace", "copy"]), code: z.string().max(200_000), source: z.enum(["button", "selection"]).default("button") }),
+      z.object({ kind: z.literal("paste"), code: z.string().max(200_000), fromAi: z.boolean() }),
+      z.object({ kind: z.literal("reset") }),
+    ])
+    .parse(req.body);
+  aiSession(id);
+  const at = new Date().toISOString();
+  const lines = "code" in e ? e.code.split("\n").length : 0;
+  const entry = S.appendAiLog(id, e.kind === "reset" ? { kind: "reset", at } : e.kind === "paste" ? { ...e, at, lines } : { ...e, at, lines });
+  return { entry };
+});
+
 // ---------------------------------------------------------------- interviewer chat (SSE)
 
 function sse(reply: FastifyReply) {
@@ -304,7 +403,7 @@ app.post("/api/sessions/:id/chat", async (req, reply) => {
   busy.add(id);
   try {
     const provider = getProvider(state.config.provider);
-    const messages = buildChatMessages(transcript, workspaceSnapshot(q, state, S.listRuns(id)));
+    const messages = buildChatMessages(transcript, workspaceSnapshot(q, state, S.listRuns(id), state.config.format === "ai" ? S.readAiLog(id) : undefined));
     const text = await provider.chat(
       { system: interviewerSystemPrompt(q, state), messages, effort: state.config.strictness === "coach" ? "medium" : "low" },
       (delta) => send({ delta }),

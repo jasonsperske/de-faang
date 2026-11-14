@@ -33,5 +33,33 @@
       "O(n) list scans (e.g. list.remove) that break the O(1) requirement."
     ]
   },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "design_verification",
+        "name": "Validating the AI's data-structure design",
+        "weight": 0.15,
+        "signals": "Confirmed that the AI's design is O(1) for both operations (no list.remove, index or linear scans), that get refreshes recency, that put on an existing key updates the value and refreshes it, that eviction removes the entry from both structures, and that capacity 1 works. Could explain the hash map + doubly linked list version even if they used a library ordered map.",
+        "levels": {
+          "1": "Accepted an O(n) or incorrect design from the AI without noticing.",
+          "2": "The design works on the samples, but recency or eviction bugs from the AI went unchecked, or they couldn't explain it.",
+          "3": "Verified recency and eviction with targeted operation sequences and stated the complexity correctly.",
+          "4": "Challenged the AI's design choices, explained the linked-list invariants precisely, and tested the tricky sequences first."
+        },
+        "resources": [
+          "lru-wiki",
+          "py-ordereddict",
+          "tih-linked-list"
+        ]
+      }
+    ],
+    "watchFor": [
+      "Using list.remove(), deque.remove() or an index scan to move a key to the front: O(n), not O(1).",
+      "get() not refreshing recency, or put() on an existing key not refreshing it.",
+      "Evicting from the linked list but not deleting the key from the hash map (or vice versa).",
+      "Python OrderedDict answers are fine, but the candidate should know move_to_end and popitem(last=False), and an interviewer may ask for the linked-list version."
+    ]
+  },
   "resources": ["lru-wiki", "py-ordereddict", "tih-linked-list", "tih-hash-table", "consistent-hashing"]
 }

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator, usePanelRef } from "react-resizable-panels";
 import { usePersistentLayout } from "../lib/layout";
-import Editor from "@monaco-editor/react";
-import type { CaseResult, Language, QuestionView, RunResult, TestCase } from "../../../shared/types";
+import Editor, { type OnMount } from "@monaco-editor/react";
+import type { AiLogEntry, CaseResult, Language, QuestionView, RunResult, TestCase } from "../../../shared/types";
+import { AssistantPanel } from "./AssistantPanel";
 import { LANGUAGES } from "../../../shared/types";
 import { api } from "../lib/api";
 import { fmtJson } from "../lib/format";
@@ -18,17 +19,73 @@ interface Props {
   onCode: (c: string) => void;
   onRan: (r: RunResult) => void;
   lastSubmit?: RunResult;
+  /** AI-assisted rounds: the assistant's log and helpfulness policy. */
+  ai?: { log: AiLogEntry[]; policy?: string };
+}
+
+type Tab = "results" | "custom" | "ai";
+type MonacoEditor = Parameters<OnMount>[0];
+
+const norm = (l: string) => l.trim().replace(/\s+/g, " ");
+/** Whether pasted text came from an AI reply: most of its non-trivial lines appear in one. */
+function fromAi(pasted: string, log: AiLogEntry[]): boolean {
+  const replies = log.filter((e) => e.kind === "response").map((e) => (e as { text: string }).text);
+  const aiLines = new Set(replies.flatMap((t) => t.split("\n")).map(norm).filter((l) => l.length >= 4));
+  const lines = pasted.split("\n").map(norm).filter((l) => l.length >= 4);
+  if (!lines.length) return replies.some((t) => t.includes(pasted.trim()));
+  return lines.filter((l) => aiLines.has(l)).length / lines.length >= 0.5;
 }
 
 const CONSOLE_BAR = 37; // px: the console's tab bar, which stays visible when collapsed
 
 export function CodeWorkspace(p: Props) {
-  const [tab, setTabState] = useState<"results" | "custom">(p.lastSubmit ? "results" : p.strict ? "custom" : "results");
+  const [tab, setTabState] = useState<Tab>(p.lastSubmit ? "results" : p.ai ? "ai" : p.strict ? "custom" : "results");
+  const [aiLog, setAiLog] = useState<AiLogEntry[]>(p.ai?.log ?? []);
+  const aiLogRef = useRef(aiLog);
+  aiLogRef.current = aiLog;
+  const editorRef = useRef<MonacoEditor | null>(null);
+  const codeRef = useRef(p.code);
+  codeRef.current = p.code;
+  const sessionRef = useRef(p.sessionId);
+  const pasteSub = useRef<{ dispose(): void } | null>(null);
+  useEffect(() => () => pasteSub.current?.dispose(), []);
+
+  const onMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    if (!p.ai || p.readOnly) return;
+    // Pastes into the editor are part of the AI-usage record (did it come from the assistant?).
+    pasteSub.current = editor.onDidPaste((e) => {
+      const text = editor.getModel()?.getValueInRange(e.range) ?? "";
+      if (text.trim().length < 10) return;
+      void api
+        .aiEvent(sessionRef.current, { kind: "paste", code: text, fromAi: fromAi(text, aiLogRef.current) })
+        .then(({ entry }) => setAiLog((l) => [...l, entry]))
+        .catch(() => {});
+    });
+  };
+
+  const insertCode = useCallback((code: string) => {
+    const ed = editorRef.current;
+    if (!ed) return p.onCode(codeRef.current + "\n" + code);
+    const sel = ed.getSelection();
+    if (sel) ed.executeEdits("ai-assistant", [{ range: sel, text: code, forceMoveMarkers: true }]);
+    ed.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const replaceCode = useCallback((code: string) => {
+    const ed = editorRef.current;
+    const model = ed?.getModel();
+    if (!ed || !model) return p.onCode(code);
+    ed.executeEdits("ai-assistant", [{ range: model.getFullModelRange(), text: code }]);
+    ed.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const getCode = useCallback(() => codeRef.current, []);
   const consoleRef = usePanelRef();
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
   const { defaultLayout, onLayoutChanged, userAction } = usePersistentLayout("code-console");
   /** Switching tabs (or new results arriving) always reveals the console. */
-  const setTab = (t: "results" | "custom") => {
+  const setTab = (t: Tab) => {
     setTabState(t);
     if (consoleRef.current?.isCollapsed()) {
       userAction();
@@ -129,6 +186,7 @@ export function CodeWorkspace(p: Props) {
           theme="vs-dark"
           language={lang.monaco}
           value={p.code}
+          onMount={onMount}
           onChange={(v) => p.onCode(v ?? "")}
           options={{
             readOnly: p.readOnly,
@@ -166,6 +224,11 @@ export function CodeWorkspace(p: Props) {
               Custom input
             </button>
           )}
+          {p.ai && (
+            <button className={tab === "ai" ? "on" : ""} onClick={() => setTab("ai")}>
+              ✦ AI assistant{aiLog.length ? ` (${aiLog.filter((e) => e.kind === "prompt").length})` : ""}
+            </button>
+          )}
           <div className="spacer" />
           <button className="collapse-btn" onClick={toggleConsole} title={consoleCollapsed ? "Show console" : "Collapse console"} aria-label={consoleCollapsed ? "Show console" : "Collapse console"}>
             {consoleCollapsed ? "▴" : "▾"}
@@ -173,7 +236,19 @@ export function CodeWorkspace(p: Props) {
         </div>
         <div className="console-body" style={consoleCollapsed ? { display: "none" } : undefined}>
           {error && <div className="banner error small">{error}</div>}
-          {tab === "custom" && !p.readOnly ? (
+          {tab === "ai" && p.ai ? (
+            <AssistantPanel
+              sessionId={p.sessionId}
+              readOnly={p.readOnly}
+              policy={p.ai.policy}
+              language={p.language}
+              log={aiLog}
+              onLog={setAiLog}
+              getCode={getCode}
+              onInsert={insertCode}
+              onReplace={replaceCode}
+            />
+          ) : tab === "custom" && !p.readOnly ? (
             <div className="custom">
               <textarea value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={placeholder} spellCheck={false} />
               <p className="muted small">

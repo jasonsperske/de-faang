@@ -10,6 +10,7 @@ Take the fear out of FAANG interviews. **de-faang** runs realistic coding and sy
   - **Coach:** proactive hints, reactions to every test run, and coaching on interview technique.
   - **Verbosity:** terse, normal, or detailed (for both the chat and the report).
 - **Multipart questions.** Later parts are revealed only when you hand in the current one, like a real round where the interviewer says "now let's extend this". Your code carries over between parts.
+- **AI-assisted rounds.** An AI assistant in the console analyses, explains, reviews or writes code, with a configurable helpfulness level. Every prompt, what you attached, the replies, and what you inserted, copied or pasted is recorded and graded with an AI-specific rubric.
 - **Follow-up questions** after you submit, answered in writing.
 - **Evaluation packet → rubric scorecard.** Per-dimension 1–4 scores with quoted evidence, a hire/no-hire signal, strengths, improvements, a model answer sketch, and curated resource links.
 
@@ -44,7 +45,7 @@ To click through the UI without API keys or token spend, set `DEFAANG_MOCK_LLM=1
 
 ## How a round works
 
-1. **Pick a question** and choose interviewer, strictness, verbosity, and language. This creates `sessions/<date>_<time>_<question>_<id>/`.
+1. **Pick a question** and choose interviewer, strictness, verbosity, and language. Coding questions can also be **AI-assisted** (see below). This creates `sessions/<date>_<time>_<question>_<id>/`.
 2. **Interview.** The interviewer opens the round. Think out loud in the chat; each message carries a snapshot of your code (or notes and diagram) plus recent test runs. **Run** executes the sample tests and your custom inputs.
 3. **Submit.** Coding runs the public and hidden tests; design exports the whiteboard. Your work freezes into `evidence/`.
 4. **Follow-ups.** Answer the question's follow-up prompts. They autosave to `evidence/followups.md`.
@@ -55,6 +56,7 @@ sessions/2026-11-14_0341_two-sum_d70a/
 ├── session.json          config + state
 ├── prompt.md
 ├── transcript.jsonl      interviewer chat
+├── ai-log.jsonl          AI-assisted rounds: assistant prompts, replies, inserts/copies/pastes
 ├── workspace/            live autosave (solution.py, design.md, design.excalidraw, design.png)
 ├── runs/                 run-001.json … submit.json
 ├── evidence/             submission, test-results.json, run-history.md, transcript.md, followups.md, packet.md
@@ -87,6 +89,44 @@ questions/system-design/<id>/
 - **Multipart questions** replace `signature` with a `parts` list. Copy `questions/templates/multipart-coding/` to start one (see below).
 - **Rubrics** live in `rubrics/*.json` (weighted dimensions with 1–4 level descriptors).
 - **Resources** live in `resources/resources.json`. The evaluator can link **only** to ids in this library, so links can't be hallucinated.
+
+## AI-assisted rounds
+
+Choose **AI-assisted** in the setup dialog of any coding question. The console under the editor gains an **✦ AI assistant** tab, next to Results and Custom input. It uses the same LLM provider as the interviewer.
+
+- **Asking:** each message can attach the problem statement and/or your current code (both on by default). **New chat** clears the assistant's memory of the conversation.
+- **Using replies:** code blocks have **Insert** (at the cursor), **Replace editor**, and **Copy** buttons.
+- **What's recorded** (`sessions/<id>/ai-log.jsonl`): every prompt with exactly what was sent to the LLM, every reply, each insert, replace and copy (including copying a selection of a reply), every paste into the editor (flagged when it matches an AI reply), and each new chat.
+- **At submit** the log is frozen into `evidence/ai-log.jsonl` and `evidence/ai-usage.md`, with the assistant's system prompt, a timeline, and stats. One stat is how many non-trivial lines of the final code appear verbatim in AI replies.
+- **The interviewer** knows the round is AI-assisted and sees your recent AI activity. It may ask you to explain AI-written code or what you checked before trusting it.
+- **Grading:** the evaluator scores the round with the question's AI rubric, and the report shows the usage stats.
+
+**Helpfulness presets** live in `ai-policies/*.md`. Each is a short header (`label`, `blurb`, `order`) followed by the policy text that goes into the assistant's system prompt. Edit them, or add your own file to add a preset. The four presets:
+
+| Preset | Behaviour |
+|---|---|
+| Socratic tutor | Never answers directly or writes code; replies with guiding questions. |
+| Guarded helper (default) | Analyses, explains and reviews; snippets of about 10 lines at most; never the full solution. |
+| Pair programmer | Writes code for tasks you specify; pushes back on "just solve it". |
+| Unrestricted | Does anything asked, including complete solutions; tests judgement and verification. |
+
+You can also edit the instructions for a single round in the setup dialog. The exact text used is saved in `session.json` and the evidence.
+
+**AI rubrics.** AI-assisted rounds are graded with `rubrics/ai-coding.json`: problem framing, directing the AI, verifying AI output, understanding & ownership, final correctness, and communication. Each coding question has an `ai` section in `question.json`:
+
+```json
+"ai": {
+  "rubric": "ai-coding",
+  "dimensions": [{ "id": "edge_case_scrutiny", "name": "Scrutinising the AI's edge cases", "weight": 0.15, "signals": "...", "levels": { "1": "...", "2": "...", "3": "...", "4": "..." }, "resources": [] }],
+  "watchFor": ["Known ways AI assistants go wrong on this question"]
+}
+```
+
+- `rubric` picks the rubric file (add your own under `rubrics/`).
+- `dimensions` are question-specific criteria added to it. Weights are normalised together with the rubric's own weights.
+- `watchFor` lists known AI failure modes. The interviewer and evaluator check whether you caught them, and they're never shown to you.
+
+Every coding question ships with one proposed dimension and a `watchFor` list. `npm run validate` checks the rubric, the dimension ids and the resource ids.
 
 ## Multipart questions
 
@@ -121,6 +161,7 @@ server/   Fastify API
   runner/       harnesses (harness.ts for Python/JS/TS, typed.ts for compiled languages), starters.ts
                 (generated starters, multipart stubs), Docker/local executor, result comparison
   interviewer.ts  persona and strictness prompts, workspace snapshots
+  assistant.ts    AI assistant: helpfulness policies, request composition, usage analysis
   evaluator.ts    packet assembly, rubric scoring, report rendering
   sessions.ts     session-folder storage
 shared/   types shared by the server and the UI

@@ -258,3 +258,27 @@ table.sessions { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .parts-prompt .part.locked { padding: 8px 12px; border-style: dashed; }
 .parts-prompt .part-no { color: var(--accent); margin-right: 4px; }
 .parts-prompt .part.locked .part-no, .parts-prompt details.part.done .part-no { color: var(--muted); }
+
+/* AI assistant (AI-assisted rounds) */
+.badge.ai { background: #2c2350; color: #cbb8ff; }
+.assistant { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.assistant-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+.bubble.assistant-reply { background: var(--panel-2); border: 1px solid #3b2f66; align-self: stretch; max-width: 100%; }
+.bubble.assistant-reply .md > :first-child { margin-top: 0; }
+.bubble.assistant-reply .md > :last-child { margin-bottom: 0; }
+.attach-chips { display: flex; gap: 4px; margin-top: 4px; }
+.chip { font-size: 10px; padding: 1px 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); color: var(--muted); }
+.ai-code { border: 1px solid var(--border); border-radius: 6px; margin: 6px 0; overflow: hidden; }
+.ai-code pre { margin: 0; padding: 8px 10px; overflow: auto; background: #0b0d11; }
+.ai-code-bar { display: flex; gap: 4px; justify-content: flex-end; padding: 3px 4px; background: var(--panel); border-bottom: 1px solid var(--border); }
+.ai-code-bar button { padding: 1px 8px; font-size: 11px; }
+.ai-action { align-self: center; font-size: 11px; }
+.assistant-input { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.assistant-input textarea { min-height: 48px; max-height: 140px; }
+.assistant-actions { display: flex; align-items: center; gap: 10px; }
+.ai-prompt { margin-top: 8px; }
+.ai-prompt summary { cursor: pointer; color: var(--muted); }
+.ai-prompt textarea { width: 100%; min-height: 160px; font-family: var(--mono); font-size: 12px; margin: 6px 0; }
+.ai-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.ai-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+.ai-stat b { font-size: 20px; }

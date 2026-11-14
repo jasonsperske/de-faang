@@ -25,11 +25,53 @@ export type Provider = "claude" | "codex" | "gemini" | "muse";
 export type Strictness = "strict" | "standard" | "coach";
 export type Verbosity = "terse" | "normal" | "detailed";
 
+/** classic: a normal coding round. ai: the candidate also has an AI assistant (coding questions only). */
+export type InterviewFormat = "classic" | "ai";
+
 export interface SessionConfig {
   provider: Provider;
   strictness: Strictness;
   verbosity: Verbosity;
   language?: Language;
+  format?: InterviewFormat;
+  /** AI-assisted rounds: the helpfulness preset and the exact system prompt the assistant used. */
+  aiPolicy?: string;
+  aiSystemPrompt?: string;
+}
+
+/** A helpfulness preset for the AI assistant (ai-policies/<id>.md). */
+export interface AiPolicy {
+  id: string;
+  label: string;
+  blurb: string;
+  prompt: string;
+}
+
+/**
+ * One entry in an AI-assisted round's log (sessions/<id>/ai-log.jsonl): what the candidate asked the
+ * assistant, exactly what was sent, what came back, and what they did with it.
+ */
+export type AiLogEntry =
+  | { kind: "prompt"; at: string; text: string; attachProblem: boolean; attachCode: boolean; language?: Language; sent: string }
+  | { kind: "response"; at: string; text: string; error?: string }
+  | { kind: "insert" | "replace" | "copy"; at: string; code: string; lines: number; source: "button" | "selection" }
+  | { kind: "paste"; at: string; code: string; lines: number; fromAi: boolean }
+  | { kind: "reset"; at: string };
+
+export interface AiUsage {
+  prompts: number;
+  promptsWithProblem: number;
+  promptsWithCode: number;
+  codeBlocksOffered: number;
+  inserts: number;
+  replaces: number;
+  copies: number;
+  pastes: number;
+  pastesFromAi: number;
+  /** Non-trivial lines of the final code, and how many of them appear verbatim in an AI reply. */
+  finalLines: number;
+  aiLinesInFinal: number;
+  aiShare: number;
 }
 
 export interface QuestionSummary {
@@ -146,6 +188,8 @@ export interface SessionView {
   lastSubmit?: RunResult;
   /** Multipart: test results of the part the candidate just finished. */
   lastPartResult?: RunResult;
+  /** AI-assisted rounds: the assistant log. */
+  ai?: AiLogEntry[];
 }
 
 export type HireDecision = "strong_hire" | "hire" | "lean_hire" | "lean_no_hire" | "no_hire";
@@ -168,6 +212,9 @@ export interface Evaluation {
   modelAnswerSketch: string;
   studyTopics: string[];
   resources: { id: string; title: string; url: string; why: string }[];
+  /** AI-assisted rounds: how the candidate used the assistant. */
+  aiUsage?: AiUsage;
+  rubric?: string;
   provider: Provider;
   model: string;
 }
@@ -189,4 +236,6 @@ export interface AppConfig {
   runnerMessage?: string;
   /** Languages whose toolchain is still downloading (first use of the Docker runner). */
   pendingLanguages: Language[];
+  /** Helpfulness presets for the AI assistant in AI-assisted rounds. */
+  aiPolicies: AiPolicy[];
 }

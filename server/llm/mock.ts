@@ -12,7 +12,9 @@ export class MockProvider implements LLMProvider {
   async chat(req: ChatRequest, onDelta: (t: string) => void): Promise<string> {
     const last = req.messages.at(-1);
     const text = typeof last?.content === "string" ? last.content : "";
-    const reply = text.includes("joined the interview room")
+    const reply = req.system.startsWith("You are an AI coding assistant")
+      ? "(mock assistant) Here's a sketch you could start from:\n\n```python\ndef helper(words):\n    seen = set()\n    for w in words:\n        seen.add(w)\n    return seen\n```\n\nCheck the edge cases before using it."
+      : text.includes("joined the interview room")
       ? "Hi, thanks for joining! I'm your interviewer today. Take a moment to read the problem, and feel free to ask clarifying questions before you start."
       : /hint/i.test(text)
         ? "(mock) Think about what information you need at each step, and how to look it up quickly."
