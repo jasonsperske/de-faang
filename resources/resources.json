@@ -54,5 +54,6 @@
   { "id": "s3-multipart-upload", "title": "AWS docs — Uploading and copying objects using multipart upload", "url": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/mpuoverview.html", "topics": ["resumable uploads", "object storage"] },
   { "id": "adaptive-bitrate-streaming", "title": "Wikipedia — Adaptive bitrate streaming", "url": "https://en.wikipedia.org/wiki/Adaptive_bitrate_streaming", "topics": ["video delivery", "hls", "cdn"] },
   { "id": "tih-binary", "title": "Tech Interview Handbook — Binary cheatsheet", "url": "https://www.techinterviewhandbook.org/algorithms/binary/", "topics": ["bit manipulation", "binary"] },
-  { "id": "russian-peasant-multiplication", "title": "Wikipedia — Ancient Egyptian (Russian peasant) multiplication", "url": "https://en.wikipedia.org/wiki/Ancient_Egyptian_multiplication", "topics": ["shift-and-add multiplication", "binary expansion"] }
+  { "id": "russian-peasant-multiplication", "title": "Wikipedia — Ancient Egyptian (Russian peasant) multiplication", "url": "https://en.wikipedia.org/wiki/Ancient_Egyptian_multiplication", "topics": ["shift-and-add multiplication", "binary expansion"] },
+  { "id": "glob-patterns", "title": "Wikipedia — glob (programming)", "url": "https://en.wikipedia.org/wiki/Glob_(programming)", "topics": ["wildcards", "pattern matching"] }
 ]

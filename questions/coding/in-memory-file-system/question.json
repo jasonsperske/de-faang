@@ -1,0 +1,277 @@
+{
+  "id": "in-memory-file-system",
+  "title": "In-Memory File System",
+  "type": "coding",
+  "difficulty": "hard",
+  "durationMinutes": 50,
+  "tags": [
+    "design",
+    "trie",
+    "hash-map",
+    "pattern-matching",
+    "multipart"
+  ],
+  "rubric": "coding",
+  "parts": [
+    {
+      "id": "store-and-read",
+      "title": "Store, read and remove blobs",
+      "durationMinutes": 15,
+      "signature": {
+        "kind": "class",
+        "entry": {
+          "javascript": "FileSystem"
+        },
+        "compare": "exact",
+        "init": [],
+        "methods": {
+          "write": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              },
+              {
+                "name": "data",
+                "type": "string"
+              }
+            ],
+            "returns": "bool"
+          },
+          "read": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "string"
+          },
+          "remove": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "bool"
+          }
+        }
+      },
+      "interviewer": {
+        "approach": "Two reasonable models. (1) A trie of directory nodes: each node has a map of child names to nodes and either is a file (holds data) or a directory (has children). write walks or creates segments, failing if it meets a file before the last segment or if the final node is a directory with children; remove deletes the file node and prunes now-empty directory nodes on the way back up. (2) A flat hash map from path to data plus a map from directory path to the number of files below it, updated for every ancestor on write (new file only) and remove, deleting entries that reach zero. Both are O(depth) per operation (O(path length) counting string work). The trie generalises better to parts 2 and 3; the flat map is shorter. Parse paths once with split('/').",
+        "hints": [
+          "Before coding, decide what you store per directory. How will you know that /a is a directory after writing /a/b/c?",
+          "What has to be true about every ancestor of a path for a write to succeed? And about the path itself?",
+          "When the last file under a directory is removed, the directory should disappear. How will you know it became empty?"
+        ],
+        "pitfalls": [
+          "Allowing a write onto a path that is currently a directory, or below a path that is a file.",
+          "Prefix checks with startswith on raw strings, so /ab is treated as inside /a.",
+          "Not pruning empty directories on remove, so a later write of a file at that path is wrongly rejected.",
+          "Counting an overwrite as a new file (double-incrementing ancestor counts).",
+          "Treating an empty blob as a missing file in their own logic."
+        ]
+      }
+    },
+    {
+      "id": "wildcard-find",
+      "title": "Wildcard find",
+      "durationMinutes": 20,
+      "signature": {
+        "kind": "class",
+        "entry": {
+          "javascript": "FileSystem"
+        },
+        "compare": "exact",
+        "init": [],
+        "methods": {
+          "write": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              },
+              {
+                "name": "data",
+                "type": "string"
+              }
+            ],
+            "returns": "bool"
+          },
+          "read": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "string"
+          },
+          "remove": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "bool"
+          },
+          "find": {
+            "params": [
+              {
+                "name": "pattern",
+                "type": "string"
+              }
+            ],
+            "returns": "string[]"
+          }
+        }
+      },
+      "interviewer": {
+        "approach": "Match the pattern segment by segment. Within a segment, * and ? are classic wildcard matching (two-pointer greedy with backtrack to the last star, or DP over (pattern index, text index)); ** is the same idea one level up, matching zero or more whole segments. Two implementation choices: walk every file and test the full path (O(files x match cost)), or walk the trie alongside the pattern, descending only into children that match the current segment and branching on ** (either skip it or consume one child and stay on it); collect files and sort the result (or visit children in sorted order). Memoise (node, pattern index) when walking with ** to avoid exponential revisits. Converting to a regex is acceptable if the candidate escapes literals like '.' and maps * to [^/]*, but naive backtracking regexes can blow up on patterns with many stars; ask how they'd bound it.",
+        "hints": [
+          "Ignore ** for a moment. How do you decide whether one segment like 'a*b?' matches 'axxbc'?",
+          "Now treat whole segments the way you treated characters: what does ** mean in that view?",
+          "Do you need to look at every file, or can the directory structure from part 1 prune the search?",
+          "What repeated work happens with several ** or * in one pattern, and how would you remember results?"
+        ],
+        "pitfalls": [
+          "Letting * match across '/' so /*.js matches /src/app.js.",
+          "Requiring ** to match at least one segment, missing /src/app.js for /src/**/app.js.",
+          "Returning directories, or forgetting to sort.",
+          "Building a regex without escaping '.', so /*.md also matches /xmd.",
+          "Exponential backtracking: recursive matching without memoisation on patterns like *a*a*a*...*b.",
+          "Trie walks that stop at a file node before trying ** as zero segments, so a trailing ** (as in /** or /src/**) misses files."
+        ]
+      }
+    },
+    {
+      "id": "directory-stats",
+      "title": "Directory stats",
+      "durationMinutes": 15,
+      "signature": {
+        "kind": "class",
+        "entry": {
+          "javascript": "FileSystem"
+        },
+        "compare": "exact",
+        "init": [],
+        "methods": {
+          "write": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              },
+              {
+                "name": "data",
+                "type": "string"
+              }
+            ],
+            "returns": "bool"
+          },
+          "read": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "string"
+          },
+          "remove": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "bool"
+          },
+          "find": {
+            "params": [
+              {
+                "name": "pattern",
+                "type": "string"
+              }
+            ],
+            "returns": "string[]"
+          },
+          "stats": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "int[]"
+          }
+        }
+      },
+      "interviewer": {
+        "approach": "Simple version: find the directory, then traverse its subtree counting files, directories and bytes: O(subtree) per call. Expected improvement once the candidate notices stats is called far more often than writes: keep aggregates on every directory node (file count, directory count, byte total) and update them along the path on write (new file, or byte delta for an overwrite), on remove, and when directories are created or pruned (each ancestor's directory count changes by the number of directories added or removed). Then stats is O(depth) to locate the node and O(1) to answer, and writes stay O(depth). With the flat-map model, the per-directory counters from part 1 extend naturally to bytes and subdirectory counts. Return [-1, -1, -1] for files and missing paths; root is always a directory.",
+        "hints": [
+          "What does the straightforward traversal cost per call? How often is stats called compared with write?",
+          "If every directory remembered its own totals, which directories' totals change when you write one file?",
+          "Overwrites change bytes but not counts. Removing the last file can delete several directories at once: which counters does that touch?"
+        ],
+        "pitfalls": [
+          "Counting the directory itself in its own directory count.",
+          "Overwrites adding the full new size instead of the difference.",
+          "Forgetting to update directory counts on ancestors when a write creates several new directories or a remove prunes several.",
+          "Returning stats for a file path, or [-1, -1, -1] for an empty root.",
+          "String-prefix scans over all files on every call, which is O(files x path length) per stats."
+        ]
+      }
+    }
+  ],
+  "followUps": [
+    "What are the time and space complexities of write, remove, find and stats in your final design? Which operation would you optimise next and how?",
+    "How would you add move/rename of a whole directory, and what happens to your aggregates and to any paths cached elsewhere?",
+    "Your find walks the whole tree for '/**/x'. How would you index files to answer common patterns faster, and what does that cost on writes?",
+    "If several threads call write, remove and stats concurrently, what can go wrong with your aggregates, and how would you make it safe without one global lock?",
+    "Blobs are now large (hundreds of MB) and must survive restarts. How would you change the design: where do the bytes live, and what stays in memory?"
+  ],
+  "interviewer": {
+    "approach": "A design-and-implementation question that grows in three steps on one class: path parsing and invariants (part 1), wildcard matching with ** (part 2), and maintaining aggregates for fast queries (part 3). The trie model pays off across all three. Expect part 1 in about 15 minutes. Strong candidates state the invariants (a path is a file or a directory, never both; directories exist only with files below them), choose a structure that makes those invariants cheap, and justify complexity when stats is called far more often than writes."
+  },
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "invariants_and_matching_check",
+        "name": "Checking the AI's invariants, matcher and aggregates",
+        "weight": 0.15,
+        "signals": "Verified that AI-written code rejects writes onto directories and under files, prunes empty directories, and treats /ab and /a as unrelated. Tested the AI's matcher on * not crossing '/', ** matching zero segments, '.' as a literal, and a many-star pattern for blow-up. In part 3, checked overwrite deltas and directory-count updates when several directories are created or pruned at once.",
+        "levels": {
+          "1": "Accepted AI code that breaks the file/directory invariants or matches * across segments without noticing.",
+          "2": "Fixed invariant or matcher bugs only after failing hidden tests.",
+          "3": "Wrote targeted operation sequences for the invariants, ** edge cases and overwrites before trusting the AI.",
+          "4": "Specified the invariants and wildcard semantics to the AI up front, reviewed the aggregate updates line by line, and explained the complexity tradeoff for stats."
+        },
+        "resources": [
+          "tih-trie",
+          "glob-patterns",
+          "tih-dynamic-programming"
+        ]
+      }
+    ],
+    "watchFor": [
+      "String-prefix checks (startswith) that treat /ab as inside /a.",
+      "Regex translations that don't escape '.', or that let * match '/'.",
+      "** implemented as 'one or more' segments instead of zero or more.",
+      "Recursive glob matching without memoisation, which blows up on the many-star hidden test.",
+      "Stats that add the full size on overwrite, or don't update ancestors' directory counts when directories are pruned.",
+      "Trie-walking matchers that return early on file nodes, so a trailing ** never matches zero segments."
+    ]
+  },
+  "resources": [
+    "tih-trie",
+    "tih-hash-table",
+    "glob-patterns",
+    "tih-dynamic-programming",
+    "big-o-cheatsheet",
+    "tih-techniques"
+  ]
+}
