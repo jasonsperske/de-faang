@@ -1,4 +1,4 @@
-Add directory statistics:
+Now implement directory statistics:
 
 - `stats(path)` returns `[files, directories, bytes]` for the directory at `path`, counting everything **below** it at any depth:
   - `files`: the number of files below `path`.
@@ -25,12 +25,3 @@ Stats must stay correct as files are written, overwritten and removed.
 **Constraints**
 
 - Up to `10^4` operations in total. Dashboards call `stats` far more often than files change, so think about what each call costs.
-
-> Your code carries over unchanged, so add `stats` to your class yourself. In compiled languages its signature is:
->
-> - Java: `public int[] stats(String path)`
-> - C#: `public int[] Stats(string path)`
-> - C++: `vector<int> stats(string path)`
-> - Go: `func (this *FileSystem) Stats(path string) []int`
-> - Rust: `fn stats(&mut self, path: String) -> Vec<i32>`
-> - C: `int* fileSystemStats(FileSystem* obj, char* path, int* returnSize)`

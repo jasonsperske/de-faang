@@ -1,4 +1,4 @@
-Add a wildcard query:
+Now implement the wildcard query:
 
 - `find(pattern)` returns the paths of every **file** whose full path matches `pattern`, sorted in ascending (ordinal) string order. Directories are never returned.
 
@@ -25,12 +25,3 @@ find("/*")                → ["/notes.txt"]
 **Constraints**
 
 - Up to `10^4` operations in total and up to `2000` files at a time. Patterns have at most `100` characters.
-
-> Your code carries over unchanged, so add `find` to your class yourself. In compiled languages its signature is:
->
-> - Java: `public String[] find(String pattern)`
-> - C#: `public string[] Find(string pattern)`
-> - C++: `vector<string> find(string pattern)`
-> - Go: `func (this *FileSystem) Find(pattern string) []string`
-> - Rust: `fn find(&mut self, pattern: String) -> Vec<String>`
-> - C: `char** fileSystemFind(FileSystem* obj, char* pattern, int* returnSize)`

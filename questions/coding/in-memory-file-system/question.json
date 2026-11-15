@@ -55,6 +55,24 @@
               }
             ],
             "returns": "bool"
+          },
+          "find": {
+            "params": [
+              {
+                "name": "pattern",
+                "type": "string"
+              }
+            ],
+            "returns": "string[]"
+          },
+          "stats": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "int[]"
           }
         }
       },
@@ -125,6 +143,15 @@
               }
             ],
             "returns": "string[]"
+          },
+          "stats": {
+            "params": [
+              {
+                "name": "path",
+                "type": "string"
+              }
+            ],
+            "returns": "int[]"
           }
         }
       },
