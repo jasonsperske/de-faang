@@ -8,7 +8,10 @@ interface Props {
   sessionId: string;
   readOnly: boolean;
   policy?: string;
-  language: Language;
+  /** Coding rounds: the editor's language. */
+  language?: Language;
+  /** Debugging rounds: the path of the file open in the editor ("attach open file" sends it with its content). */
+  getFile?: () => string | undefined;
   log: AiLogEntry[];
   onLog: (entries: AiLogEntry[]) => void;
   getCode: () => string;
@@ -68,7 +71,9 @@ export function AssistantPanel(p: Props) {
     try {
       const r = await streamAssistant(
         p.sessionId,
-        { text, attachProblem, attachCode, language: p.language, code: p.getCode() },
+        p.getFile
+          ? { text, attachProblem, attachCode: attachCode && p.getFile() !== undefined, code: p.getCode(), file: p.getFile() }
+          : { text, attachProblem, attachCode, language: p.language, code: p.getCode() },
         (d) => setStreaming((s) => (s ?? "") + d),
       );
       p.onLog([...log.current, ...[r.prompt, r.response].filter((x): x is AiLogEntry => Boolean(x))]);
@@ -141,7 +146,9 @@ export function AssistantPanel(p: Props) {
       <div className="assistant-list" ref={listRef} onCopy={onCopy}>
         {p.log.length === 0 && pending === null && (
           <p className="muted small">
-            Ask the AI to analyse the problem, explain an idea, review your code, or write code. Everything you send and what you do with the
+            {p.getFile
+              ? "Ask the AI to explain code, suggest hypotheses, review your fix, or write code. It only sees what you send it: the bug report and the file you have open, if you attach them."
+              : "Ask the AI to analyse the problem, explain an idea, review your code, or write code."} Everything you send and what you do with the
             replies is recorded and assessed: how well you direct the AI and how carefully you check its output.
             {p.policy && <> Helpfulness: <strong>{p.policy}</strong>.</>}
           </p>
@@ -155,7 +162,7 @@ export function AssistantPanel(p: Props) {
                   {(e.attachProblem || e.attachCode) && (
                     <div className="attach-chips">
                       {e.attachProblem && <span className="chip">problem</span>}
-                      {e.attachCode && <span className="chip">code</span>}
+                      {e.attachCode && <span className="chip">{e.file ?? "code"}</span>}
                     </div>
                   )}
                 </div>
@@ -212,8 +219,8 @@ export function AssistantPanel(p: Props) {
             <label className="check small" title="Send the problem statement with this message">
               <input type="checkbox" checked={attachProblem} onChange={(e) => setAttachProblem(e.target.checked)} /> attach problem
             </label>
-            <label className="check small" title="Send your current code with this message">
-              <input type="checkbox" checked={attachCode} onChange={(e) => setAttachCode(e.target.checked)} /> attach my code
+            <label className="check small" title={p.getFile ? "Send the file open in the editor with this message" : "Send your current code with this message"}>
+              <input type="checkbox" checked={attachCode} onChange={(e) => setAttachCode(e.target.checked)} /> {p.getFile ? "attach open file" : "attach my code"}
             </label>
             <div className="spacer" />
             <button className="ghost small" disabled={streaming !== null || p.log.length === 0} title="Start a fresh conversation; the AI forgets earlier messages" onClick={() => void record({ kind: "reset" })}>

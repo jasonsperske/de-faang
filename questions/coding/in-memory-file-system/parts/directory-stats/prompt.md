@@ -29,6 +29,7 @@ Stats must stay correct as files are written, overwritten and removed.
 > Your code carries over unchanged, so add `stats` to your class yourself. In compiled languages its signature is:
 >
 > - Java: `public int[] stats(String path)`
+> - C#: `public int[] Stats(string path)`
 > - C++: `vector<int> stats(string path)`
 > - Go: `func (this *FileSystem) Stats(path string) []int`
 > - Rust: `fn stats(&mut self, path: String) -> Vec<i32>`

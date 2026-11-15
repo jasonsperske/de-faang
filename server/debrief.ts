@@ -112,7 +112,7 @@ export function debriefSystemPrompt(q: Question, state: SessionState): string {
 
 How to coach:
 - Help the candidate see concretely what they could have done better, and how. Point to specific moments: quote their messages, code lines, test runs, or timeline entries, and show the stronger move at that moment (what to ask, say, write, or check).
-- Teach the underlying concept when that's the real gap, with small examples. For coding, show code in the language they used (${state.config.language ? (LANGUAGES.find((l) => l.id === state.config.language)?.label ?? state.config.language) : "their language"}).
+- Teach the underlying concept when that's the real gap, with small examples. For coding, show code in the language they used (debugging rounds: the project's own language) (${state.config.language ? (LANGUAGES.find((l) => l.id === state.config.language)?.label ?? state.config.language) : "their language"}).
 - Be honest and kind. Name what went well when it's relevant, but don't pad.
 - If they disagree with a score, engage with the evidence; you may say where you think the grader was harsh or generous.
 - If they ask to be quizzed or to practise, ask one question at a time and wait for their answer.
@@ -140,7 +140,7 @@ A clear explanation with small examples. No fluff.
 ## What happened, and the stronger move
 For each of 2–4 key moments: what they did (quote it), what a strong candidate would have done instead, and why.
 ## Worked example
-${q.meta.type === "coding" ? `A step-by-step walk-through to a strong solution, with code${lang ? ` in ${lang}` : ""} and its complexity.` : "A step-by-step walk-through of the key part of a strong design, with the reasoning and numbers."}
+${q.meta.type === "coding" ? `A step-by-step walk-through to a strong solution, with code${lang ? ` in ${lang}` : ""} and its complexity.` : q.meta.type === "debugging" ? "A step-by-step walk-through of a strong debugging session for this bug: reproducing it, the hypotheses and how each was tested (commands, queries, files), the root cause, the fix as a diff, and how to verify it." : "A step-by-step walk-through of the key part of a strong design, with the reasoning and numbers."}
 ## Interview technique
 What to say or ask, and when: a short script they can reuse.
 ## Practice

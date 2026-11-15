@@ -1,8 +1,8 @@
-// Compiled-language runner tests (Go, C, C++, Rust, Java). These need Docker and the toolchain
+// Compiled-language runner tests (Go, C, C++, Rust, Java, C#). These need Docker and the toolchain
 // images (`npm run docker:pull`), so they are skipped when Docker isn't reachable.
 import { execFileSync } from "node:child_process";
 import { beforeAll, describe, expect, it } from "vitest";
-import { getQuestion, loadQuestions } from "../server/questions.ts";
+import { getQuestion, loadQuestions, starterThrough } from "../server/questions.ts";
 import { runCases, type LabeledCase } from "../server/runner/index.ts";
 import type { Language } from "../shared/types.ts";
 
@@ -27,7 +27,7 @@ const all = (id: string) => {
 const run = (id: string, lang: Language, code: string, cases: LabeledCase[] = all(id), withReference = false) =>
   runCases(getQuestion(id), lang, code, cases, { withReference });
 
-type Typed = "go" | "c" | "cpp" | "rust" | "java";
+type Typed = "go" | "c" | "cpp" | "rust" | "java" | "csharp";
 
 const twoSum: Record<Typed, string> = {
   go: `package main
@@ -95,6 +95,20 @@ class Solution {
             seen.put(nums[i], i);
         }
         return new int[0];
+    }
+}
+`,
+  csharp: `using System.Collections.Generic;
+
+public class Solution {
+    public int[] TwoSum(int[] nums, int target) {
+        var seen = new Dictionary<int, int>();
+        for (int i = 0; i < nums.Length; i++) {
+            if (seen.TryGetValue(target - nums[i], out var j)) return new[] { j, i };
+            seen[nums[i]] = i;
+        }
+        Console.WriteLine("no pair");
+        return Array.Empty<int>();
     }
 }
 `,
@@ -261,6 +275,34 @@ class LRUCache extends LinkedHashMap<Integer, Integer> {
     }
 }
 `,
+  csharp: `public class LRUCache {
+    private readonly int capacity;
+    private readonly LinkedList<(int Key, int Value)> order = new();
+    private readonly Dictionary<int, LinkedListNode<(int Key, int Value)>> items = new();
+
+    public LRUCache(int capacity) {
+        this.capacity = capacity;
+    }
+
+    public int Get(int key) {
+        if (!items.TryGetValue(key, out var node)) return -1;
+        order.Remove(node);
+        order.AddFirst(node);
+        return node.Value.Value;
+    }
+
+    public void Put(int key, int value) {
+        if (items.TryGetValue(key, out var node)) {
+            order.Remove(node);
+            items.Remove(key);
+        } else if (items.Count == capacity) {
+            items.Remove(order.Last!.Value.Key);
+            order.RemoveLast();
+        }
+        items[key] = order.AddFirst((key, value));
+    }
+}
+`,
 };
 
 const merge: Record<Typed, string> = {
@@ -345,9 +387,20 @@ class Solution {
     }
 }
 `,
+  csharp: `public class Solution {
+    public int[][] Merge(int[][] intervals) {
+        var outp = new List<int[]>();
+        foreach (var iv in intervals.OrderBy(x => x[0])) {
+            if (outp.Count > 0 && iv[0] <= outp[^1][1]) outp[^1][1] = Math.Max(outp[^1][1], iv[1]);
+            else outp.Add(new[] { iv[0], iv[1] });
+        }
+        return outp.ToArray();
+    }
+}
+`,
 };
 
-const LANGS: Typed[] = ["go", "c", "cpp", "rust", "java"];
+const LANGS: Typed[] = ["go", "c", "cpp", "rust", "java", "csharp"];
 
 describe.skipIf(!dockerUp)("compiled languages", { timeout: 120_000 }, () => {
   for (const lang of LANGS) {
@@ -373,7 +426,7 @@ describe.skipIf(!dockerUp)("compiled languages", { timeout: 120_000 }, () => {
     it(`compiles the generated ${lang} starter far enough to report a compile error or empty output`, async () => {
       const q = getQuestion("two-sum");
       const r = await run("two-sum", lang, q.starter[lang]!, all("two-sum").slice(0, 1));
-      // Starters have empty bodies: Go/Java/Rust/C++ reject a missing return; C may compile.
+      // Starters have empty bodies: Go/Java/C#/Rust/C++ reject a missing return; C may compile.
       expect(r.compileError !== undefined || r.cases.length === 1).toBe(true);
     });
   }
@@ -396,6 +449,31 @@ describe.skipIf(!dockerUp)("compiled languages", { timeout: 120_000 }, () => {
     expect(r.cases[0].stdout).toContain("len=4");
     expect(r.cases[0].error).toMatch(/ArrayIndexOutOfBounds.*line 4/);
     expect(r.cases[1].stdout).toContain("len=3");
+  });
+
+  it("reports C# exceptions per case with the line number, and C# compile errors against Solution.cs", async () => {
+    const thrown = await run("two-sum", "csharp", "public class Solution {\n    public int[] TwoSum(int[] nums, int target) {\n        Console.WriteLine(\"len=\" + nums.Length);\n        return new[] { nums[100] };\n    }\n}\n", all("two-sum").slice(0, 2));
+    expect(thrown.cases[0].stdout).toContain("len=4");
+    expect(thrown.cases[0].error).toMatch(/IndexOutOfRangeException.*line 4, in TwoSum/);
+    expect(thrown.cases[1].error).toMatch(/IndexOutOfRangeException/);
+    const bad = await run("two-sum", "csharp", "public class Solution {\n    public int[] TwoSum(int[] nums, int target) {\n        return nope;\n    }\n}\n");
+    expect(bad.ok).toBe(false);
+    expect(bad.compileError).toMatch(/Solution\.cs\(3,16\): error CS0103/);
+  });
+
+  it("compiles every coding question's C# starter with all of its test inputs", async () => {
+    // Empty method bodies only fail with "not all code paths return a value" (CS0161), so any other
+    // error means a generated starter, entry name or test literal is wrong.
+    for (const q of [...loadQuestions().values()].filter((x) => x.meta.type === "coding")) {
+      expect(q.languages, q.meta.id).toContain("csharp");
+      for (const part of q.parts) {
+        const cases = [...part.tests.public, ...part.tests.hidden].map((t) => ({ kind: "hidden" as const, test: t }));
+        const r = await runCases(q, "csharp", starterThrough(q, part.index).csharp!, cases, { withReference: false, part: part.index });
+        const errors = (r.compileError ?? "").split("\n").filter((l) => / error CS\d+/.test(l));
+        expect(r.ok || errors.length > 0, `${q.meta.id} part ${part.index}: ${r.compileError}`).toBe(true);
+        expect(errors.filter((l) => !l.includes("error CS0161")), `${q.meta.id} part ${part.index}`).toEqual([]);
+      }
+    }
   });
 
   it("recovers Go panics and Rust panics per case", async () => {

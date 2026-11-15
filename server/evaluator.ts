@@ -5,8 +5,9 @@ import { LANGUAGES } from "../shared/types.ts";
 import { getProvider, type ContentPart } from "./llm/index.ts";
 import { ROOT } from "./paths.ts";
 import type { Question } from "./questions.ts";
-import { elapsedMinutes, summarizeRun } from "./interviewer.ts";
-import { designPng, lastSubmit, listRuns, readAiLog, readTranscript, transcriptMarkdown, writeEvidence } from "./sessions.ts";
+import { activityLines, elapsedMinutes, summarizeRun } from "./interviewer.ts";
+import { designPng, lastSubmit, listRuns, readActivity, readAiLog, readTranscript, transcriptMarkdown, writeEvidence } from "./sessions.ts";
+import { changesDiff, projectChanges, projectDir } from "./debug/project.ts";
 import { aiTimeline, aiUsage, usageLine } from "./assistant.ts";
 
 interface Rubric {
@@ -39,6 +40,12 @@ export function rubricFor(q: Question, state: SessionState): Rubric {
     dimensions: dims.map((d) => ({ ...d, weight: Math.round((d.weight / total) * 1000) / 1000 })),
   };
 }
+/** The code the candidate ended up with, for the AI-usage stats: their code, or in debugging rounds the lines they added. */
+export function finalCode(q: Question, state: SessionState): string {
+  if (q.project) return projectChanges(q.project.dir, projectDir(state.id)).flatMap((c) => c.added).join("\n");
+  return state.code?.[state.config.language ?? "python"] ?? "";
+}
+
 export const loadResources = (): Resource[] => JSON.parse(fs.readFileSync(path.join(ROOT, "resources", "resources.json"), "utf8"));
 
 interface RawEvaluation {
@@ -113,7 +120,7 @@ export function buildPacket(q: Question, state: SessionState): string {
   s.push(
     `## Session\n- Mode: ${state.config.strictness} · Verbosity: ${state.config.verbosity}\n- Suggested duration: ${q.meta.durationMinutes} min · Time to submit: ${
       state.submittedAt ? Math.round((Date.parse(state.submittedAt) - Date.parse(state.createdAt)) / 60000) : elapsedMinutes(state)
-    } min\n- Hints requested: ${state.hintsRequested} · Test runs before submit: ${state.runs}`,
+    } min\n- Hints requested: ${state.hintsRequested} · ${q.project ? "Check runs" : "Test runs"} before submit: ${state.runs}`,
   );
   if (q.multipart) {
     const reached = (state.part ?? 0) + 1;
@@ -141,7 +148,24 @@ export function buildPacket(q: Question, state: SessionState): string {
       }`,
     );
   }
-  if (q.meta.type === "coding") {
+  if (q.meta.type === "debugging") {
+    const changes = projectChanges(q.project!.dir, projectDir(state.id));
+    s.push(
+      `## The candidate's changes (${changes.length} file${changes.length === 1 ? "" : "s"}: ${changes.map((c) => `${c.path} ${c.status}`).join(", ") || "none"})\n\`\`\`diff\n${changesDiff(changes) || "(no changes)"}\`\`\``,
+    );
+    if (submit) {
+      const lines = submit.cases.map(
+        (c) => `- [${c.passed ? "PASS" : "FAIL"}] ${c.kind} check "${c.name}"${c.passed ? "" : c.error ? ` → error: ${c.error.split("\n")[0]}` : ` → got ${JSON.stringify(c.output)?.slice(0, 300)}, expected ${JSON.stringify(c.expected)?.slice(0, 300)}`}`,
+      );
+      s.push(`## Checks on the final project: ${submit.passed}/${submit.total} passed (sample + hidden)\n${submit.ok ? lines.join("\n") : `Did not run: ${submit.compileError}`}`);
+    }
+    s.push(
+      `## Investigation timeline (files opened, terminal commands)\nThe candidate had a file browser, an editor with hot reloading, the running app, and a terminal. There was no architecture overview, so how they found their way around is evidence.\n${activityLines(state, readActivity(state.id), 1500).join("\n") || "The candidate opened no files and ran no commands."}`,
+    );
+    const history = runs.filter((r) => !r.submit);
+    s.push(`## Sample check runs (${history.length})\n${history.map(summarizeRun).join("\n") || "The candidate never ran the sample checks before submitting."}`);
+    if (state.config.format === "ai") s.push(aiSection(q, state, finalCode(q, state)));
+  } else if (q.meta.type === "coding") {
     const lang = state.config.language ?? "python";
     s.push(`## Final submission (${LANGUAGES.find((l) => l.id === lang)!.label})\n\`\`\`${lang}\n${state.code?.[lang] ?? ""}\n\`\`\``);
     if (submit) {
@@ -155,15 +179,7 @@ export function buildPacket(q: Question, state: SessionState): string {
         `## Submission test results: ${submit.passed}/${submit.total} passed (public + hidden${q.multipart ? ", every part reached, run on the final code" : ""})\n${submit.ok ? lines.join("\n") : `Did not run: ${submit.compileError}`}`,
       );
     }
-    if (state.config.format === "ai") {
-      const log = readAiLog(state.id);
-      const watch = q.meta.ai.watchFor;
-      s.push(
-        `## AI assistant (AI-assisted round)\nHelpfulness policy: ${state.config.aiPolicy}. The assistant's instructions:\n\n\`\`\`\n${state.config.aiSystemPrompt ?? ""}\n\`\`\`\n\nUsage: ${usageLine(aiUsage(log, state.code?.[lang] ?? ""))}${
-          watch.length ? `\n\nKnown ways AI assistants go wrong on this question (check whether the candidate caught them):\n${watch.map((w) => `- ${w}`).join("\n")}` : ""
-        }\n\n### Timeline of AI use\n${aiTimeline(state, log) || "The candidate didn't use the assistant."}`,
-      );
-    }
+    if (state.config.format === "ai") s.push(aiSection(q, state, state.code?.[lang] ?? ""));
     const history = runs.filter((r) => !r.submit);
     s.push(`## Run history (${history.filter((r) => !r.partSubmit).length} runs${q.multipart ? ", plus part hand-ins" : ""})\n${history.map(summarizeRun).join("\n") || "The candidate never ran their code before submitting."}`);
   } else {
@@ -178,6 +194,14 @@ export function buildPacket(q: Question, state: SessionState): string {
   return packet;
 }
 
+function aiSection(q: Question, state: SessionState, code: string): string {
+  const log = readAiLog(state.id);
+  const watch = q.meta.ai.watchFor;
+  return `## AI assistant (AI-assisted round)\nHelpfulness policy: ${state.config.aiPolicy}. The assistant's instructions:\n\n\`\`\`\n${state.config.aiSystemPrompt ?? ""}\n\`\`\`\n\nUsage: ${usageLine(aiUsage(log, code))}${
+    watch.length ? `\n\nKnown ways AI assistants go wrong on this question (check whether the candidate caught them):\n${watch.map((w) => `- ${w}`).join("\n")}` : ""
+  }\n\n### Timeline of AI use\n${aiTimeline(state, log) || "The candidate didn't use the assistant."}`;
+}
+
 export async function evaluate(q: Question, state: SessionState): Promise<{ evaluation: Evaluation; report: string }> {
   const rubric = rubricFor(q, state);
   const resources = loadResources();
@@ -189,7 +213,12 @@ export async function evaluate(q: Question, state: SessionState): Promise<{ eval
 Principles:
 - Grade against the real FAANG bar regardless of practice mode. In coach or standard mode, hints and help are expected, but heavy reliance on hints lowers the problem-solving score. Say so kindly.
 - Every score must be justified with evidence: short quotes or concrete observations from the packet (code lines, transcript, test results, follow-up answers). Never invent evidence.
-- Hidden test results are ground truth for correctness.${
+- Hidden test (or check) results are ground truth for correctness.${
+    q.meta.type === "debugging"
+      ? `
+- This was a DEBUGGING round: a bug report and an unfamiliar codebase with no architecture overview. Grade the process (reproducing, investigating, forming and testing hypotheses, finding the root cause, verifying) as well as the fix. Use the investigation timeline and the transcript as evidence. A fix that hides the symptom instead of fixing the cause should score low on root cause even if some checks pass.`
+      : ""
+  }${
     state.config.format === "ai"
       ? `
 - This was an AI-ASSISTED round: the candidate had an AI assistant and using it was allowed. Judge how they used it (the prompts, what they attached, what they adopted, how they verified it) against the rubric. Using AI is not a negative in itself; adopting AI output without understanding or checking it is. AI-written code counts toward correctness, but ownership must be shown in the transcript and follow-up answers. Quote prompts and timeline entries as evidence.`
@@ -239,7 +268,7 @@ ${resources.map((r) => `- ${r.id} — ${r.title} — ${r.topics.join(", ")}`).jo
   const totalWeight = dims.reduce((a, d) => a + d.weight, 0);
   const weightedScore = Math.round((dims.reduce((a, d) => a + d.score * d.weight, 0) / totalWeight) * 100) / 100;
   const byId = new Map(resources.map((r) => [r.id, r]));
-  const usage = state.config.format === "ai" ? aiUsage(readAiLog(state.id), state.code?.[state.config.language ?? "python"] ?? "") : undefined;
+  const usage = state.config.format === "ai" ? aiUsage(readAiLog(state.id), finalCode(q, state)) : undefined;
   const evaluation: Evaluation = {
     summary: raw.summary,
     decision: decisionFor(weightedScore),

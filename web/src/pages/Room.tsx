@@ -9,6 +9,9 @@ import { FollowUps } from "../components/FollowUps";
 import { Markdown } from "../components/Markdown";
 import { Report } from "../components/Report";
 import { CollapseButton, RoomLayout } from "../components/RoomLayout";
+import { DebugWorkspace } from "../components/debug/DebugWorkspace";
+import { ProjectBrowser } from "../components/debug/ProjectBrowser";
+import { useProject } from "../components/debug/useProject";
 
 export function Room({ id }: { id: string }) {
   const [view, setView] = useState<SessionView | null>(null);
@@ -25,12 +28,13 @@ export function Room({ id }: { id: string }) {
 function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) {
   const { session, question } = view;
   const isCoding = question.type === "coding";
+  const isDebug = question.type === "debugging";
   const status = session.status;
   const readOnly = status !== "in_progress";
   const strict = session.config.strictness === "strict";
 
   const [showReport, setShowReport] = useState(status === "evaluated");
-  const [leftTab, setLeftTab] = useState<"prompt" | "tests" | "followups">(status === "followups" ? "followups" : "prompt");
+  const [leftTab, setLeftTab] = useState<"prompt" | "tests" | "files" | "followups">(status === "followups" ? "followups" : "prompt");
   const [language, setLanguage] = useState<Language>(session.config.language ?? "python");
   const [codeByLang, setCodeByLang] = useState<Partial<Record<Language, string>>>({ ...question.starter, ...session.code });
   const [submitting, setSubmitting] = useState(false);
@@ -38,7 +42,10 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
   const part = question.part ?? 0;
   const partCount = question.parts ?? 1;
   const hasNextPart = isCoding && part < partCount - 1;
-  const [saveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
+  const [codeSaveState, setSaveState] = useState<"saved" | "saving" | "dirty">("saved");
+  // Debugging rounds: the project's files and editor tabs (each file autosaves on its own).
+  const project = useProject(session.id, question.project?.files ?? [], question.project?.open, readOnly);
+  const saveState = isDebug ? project.saveState : codeSaveState;
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Counts interviewer replies; the collapsed chat rail shows a dot for replies it hasn't shown yet.
   const [replies, setReplies] = useState(0);
@@ -50,9 +57,9 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
   codeRef.current = { language, code: codeByLang[language] ?? "" };
 
   const getWorkspace = useCallback((): Workspace | undefined => {
-    if (readOnly) return undefined;
+    if (readOnly || isDebug) return undefined;
     return isCoding ? { ...codeRef.current } : designRef.current?.snapshot();
-  }, [isCoding, readOnly]);
+  }, [isCoding, isDebug, readOnly]);
 
   // Debounced autosave into sessions/<id>/workspace/.
   const saveTimer = useRef<number | undefined>(undefined);
@@ -79,7 +86,8 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
     setSubmitError(null);
     clearTimeout(saveTimer.current);
     try {
-      const ws = isCoding ? { ...codeRef.current } : await designRef.current!.snapshotWithImage();
+      if (isDebug) await project.flush();
+      const ws = isDebug ? undefined : isCoding ? { ...codeRef.current } : await designRef.current!.snapshotWithImage();
       await api.submit(session.id, ws);
       reload();
     } catch (e) {
@@ -118,7 +126,7 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
       <RoomHeader view={view}>
         {status === "in_progress" && (
           <>
-            <span className={`save ${saveState}`}>{saveState === "saved" ? "saved" : saveState === "saving" ? "saving…" : "unsaved"}</span>
+            <span className={`save ${saveState}`}>{saveState === "saved" ? "saved" : saveState === "saving" ? "saving…" : saveState === "error" ? "not saved" : "unsaved"}</span>
             {confirm === "part" ? (
               <>
                 <span className="small nowrap">Hand in part {part + 1}? Its hidden tests run now.</span>
@@ -138,7 +146,7 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
                   Keep working
                 </button>
                 <button className="primary small" onClick={submit} disabled={submitting}>
-                  {submitting ? (isCoding ? "Running hidden tests…" : "Submitting…") : "Yes, submit"}
+                  {submitting ? (isCoding ? "Running hidden tests…" : isDebug ? "Running checks…" : "Submitting…") : "Yes, submit"}
                 </button>
               </>
             ) : hasNextPart ? (
@@ -166,8 +174,8 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
       {submitError && <div className="banner error">{submitError}</div>}
 
       <RoomLayout
-        id={isCoding ? "coding" : "design"}
-        leftLabel={question.followUps && status === "followups" ? "Prompt · Follow-ups" : "Prompt"}
+        id={isCoding ? "coding" : isDebug ? "debugging" : "design"}
+        leftLabel={question.followUps && status === "followups" ? "Prompt · Follow-ups" : isDebug ? "Prompt · Files" : "Prompt"}
         rightLabel="Interviewer"
         leftDefault={isCoding ? "26%" : "22%"}
         rightDefault="25%"
@@ -183,6 +191,11 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
                 {question.partViews ? `Part ${part + 1} tests` : "Sample tests"}
               </button>
             )}
+            {isDebug && (
+              <button className={leftTab === "files" ? "on" : ""} onClick={() => setLeftTab("files")} title="Browse and open the project's files">
+                Files
+              </button>
+            )}
             {question.followUps && (
               <button className={leftTab === "followups" ? "on" : ""} onClick={() => setLeftTab("followups")}>
                 Follow-ups
@@ -191,8 +204,9 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
             <div className="spacer" />
             <CollapseButton side="left" onClick={collapse} />
           </div>
-          <div className="left-body">
+          <div className={`left-body ${leftTab === "files" ? "flush" : ""}`}>
             {leftTab === "prompt" && (question.partViews ? <PartsPrompt question={question} /> : <Markdown>{question.prompt}</Markdown>)}
+            {leftTab === "files" && isDebug && <ProjectBrowser project={project} />}
             {leftTab === "tests" && (
               <div className="sample-tests">
                 {question.publicTests?.map((t, i) => (
@@ -225,7 +239,18 @@ function RoomInner({ view, reload }: { view: SessionView; reload: () => void }) 
         )}
         center={
         <main className="center-pane">
-          {isCoding ? (
+          {isDebug ? (
+            <DebugWorkspace
+              sessionId={session.id}
+              project={project}
+              readOnly={readOnly}
+              checks={Boolean(question.project?.checks)}
+              activity={view.activity ?? []}
+              lastSubmit={view.lastSubmit}
+              onRan={onRan}
+              ai={session.config.format === "ai" ? { log: view.ai ?? [], policy: session.config.aiPolicy } : undefined}
+            />
+          ) : isCoding ? (
             <CodeWorkspace
               sessionId={session.id}
               question={question}

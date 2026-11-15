@@ -29,6 +29,7 @@ find("/*")                → ["/notes.txt"]
 > Your code carries over unchanged, so add `find` to your class yourself. In compiled languages its signature is:
 >
 > - Java: `public String[] find(String pattern)`
+> - C#: `public string[] Find(string pattern)`
 > - C++: `vector<string> find(string pattern)`
 > - Go: `func (this *FileSystem) Find(pattern string) []string`
 > - Rust: `fn find(&mut self, pattern: String) -> Vec<String>`

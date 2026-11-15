@@ -14,4 +14,4 @@ Blobs are strings. A blob's size is its length in characters.
 
 When a part works, use **Finish part N** to hand it in and see the next one. Your code carries over: keep your class and add the new methods to it.
 
-> **Test format:** each test is a sequence of operations. The first op constructs the class; each later op calls a method with the matching args. Method names follow each language's convention: `write`/`read` in most, `Write`/`Read` in Go, `fileSystemWrite` in C (the starter shows the exact names).
+> **Test format:** each test is a sequence of operations. The first op constructs the class; each later op calls a method with the matching args. Method names follow each language's convention: `write`/`read` in most, `Write`/`Read` in C# and Go, `fileSystemWrite` in C (the starter shows the exact names).
