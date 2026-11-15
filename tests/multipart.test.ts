@@ -30,7 +30,7 @@ describe("multipart question format", () => {
     expect(q.parts.map((p) => p.id)).toEqual(["anagram-pairs", "compound-words"]);
     expect(q.parts[0].signature.entry).toMatchObject({ python: "count_anagram_pairs", rust: "count_anagram_pairs", c: "countAnagramPairs" });
     expect(q.parts[1].signature.compare).toBe("unordered");
-    expect(q.languages).toHaveLength(8);
+    expect(q.languages).toHaveLength(9);
     expect(summarize(q).parts).toBe(2);
   });
 
@@ -49,12 +49,13 @@ describe("multipart question format", () => {
     expect(questionView(q, "strict", false, 1).publicTests).toBeUndefined();
   });
 
-  it("puts later Java and C++ methods inside the existing class Solution", () => {
+  it("puts later Java, C# and C++ methods inside the existing class Solution", () => {
     const s = starterThrough(getQuestion(ID), 1);
-    for (const l of ["java", "cpp"] as const) {
+    for (const l of ["java", "csharp", "cpp"] as const) {
       expect(s[l]!.match(/class Solution/g)).toHaveLength(1);
-      expect(s[l]).toMatch(/findCompoundWords\([^)]*\) \{\n\n {4}\}\n\}/);
+      expect(s[l]).toMatch(/[fF]indCompoundWords\([^)]*\) \{\n\n {4}\}\n\}/);
     }
+    expect(s.csharp).toContain("public string[] FindCompoundWords(string[] words)");
     expect(s.rust!.match(/impl Solution/g)).toHaveLength(2);
     expect(s.go).toMatch(/^package main\n/);
     expect(s.go!.match(/package main/g)).toHaveLength(1);
@@ -194,7 +195,7 @@ const dockerUp = (() => {
   }
 })();
 
-const compiled: Record<"go" | "c" | "cpp" | "rust" | "java", string> = {
+const compiled: Record<"go" | "c" | "cpp" | "rust" | "java" | "csharp", string> = {
   go: `package main
 
 import "sort"
@@ -404,6 +405,34 @@ class Solution {
     }
 }
 `,
+  csharp: `public class Solution {
+    public long CountAnagramPairs(string[] words) {
+        var groups = new Dictionary<string, long>();
+        foreach (var w in words.Distinct()) {
+            var c = w.ToCharArray();
+            Array.Sort(c);
+            var k = new string(c);
+            groups[k] = groups.GetValueOrDefault(k) + 1;
+        }
+        return groups.Values.Sum(k => k * (k - 1) / 2);
+    }
+
+    public string[] FindCompoundWords(string[] words) {
+        var dict = new HashSet<string>(words);
+        var outp = new List<string>();
+        foreach (var w in words.Distinct()) {
+            int n = w.Length;
+            var can = new bool[n + 1];
+            can[0] = true;
+            for (int i = 1; i <= n; i++)
+                for (int j = 0; j < i && !can[i]; j++)
+                    if (can[j] && (j > 0 || i < n) && dict.Contains(w.Substring(j, i - j))) can[i] = true;
+            if (can[n]) outp.Add(w);
+        }
+        return outp.ToArray();
+    }
+}
+`,
 };
 
 describe.skipIf(!dockerUp)("multipart runs (compiled languages)", { timeout: 180_000 }, () => {
@@ -411,7 +440,7 @@ describe.skipIf(!dockerUp)("multipart runs (compiled languages)", { timeout: 180
     process.env.DEFAANG_RUNNER = "docker";
   });
 
-  for (const lang of ["go", "c", "cpp", "rust", "java"] as const) {
+  for (const lang of ["go", "c", "cpp", "rust", "java", "csharp"] as const) {
     it(`passes both parts in ${lang}`, async () => {
       const r = await runBoth(lang, compiled[lang]);
       expect(r.compileError).toBeUndefined();

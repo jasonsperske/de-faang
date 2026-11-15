@@ -1,5 +1,5 @@
 // Language-neutral type signatures for coding questions. Statically typed languages (Go, C, C++,
-// Rust, Java) need parameter and return types to generate a starter and a test harness; the
+// Rust, Java, C#) need parameter and return types to generate a starter and a test harness; the
 // question declares them once in question.json and every language is derived from that.
 //
 // Types: int | long | double | bool | string, followed by any number of "[]" (e.g. "int[][]"),
@@ -91,7 +91,7 @@ export function floatLit(n: number): string {
   return /[.eE]/.test(s) ? s : `${s}.0`;
 }
 
-/** String literal escaping shared by C, C++, Java, Go and Rust; `unicode` formats a code point escape. */
+/** String literal escaping shared by C, C++, Java, C#, Go and Rust; `unicode` formats a code point escape. */
 export function quote(s: string, unicode: (cp: number) => string): string {
   let out = '"';
   for (const ch of s) {

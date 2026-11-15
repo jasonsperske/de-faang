@@ -72,7 +72,7 @@ async function runRaw(sig: Signature, lang: Language, code: string, tests: TestC
 }
 
 const SIGNALS: Record<number, string> = {
-  134: "Aborted (SIGABRT): e.g. a failed assertion, an uncaught C++ exception, a double free, or a Rust stack overflow.",
+  134: "Aborted (SIGABRT): e.g. a failed assertion, an uncaught C++ exception, a double free, or a Rust or C# stack overflow.",
   136: "Floating point exception (SIGFPE): usually an integer division by zero.",
   137: "Killed (SIGKILL): the program exceeded the 512MB memory limit or the time limit.",
   139: "Segmentation fault (SIGSEGV): invalid memory access (null or dangling pointer, out-of-bounds index) or a stack overflow from deep recursion.",

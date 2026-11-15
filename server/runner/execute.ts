@@ -64,6 +64,27 @@ export const RUNTIMES: Record<Language, LangRuntime> = {
       exec: `java -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:-UsePerfData -Xss256m -cp ${sh(out + "/classes")} Main`,
     }),
   },
+  csharp: {
+    // Calls the Roslyn compiler (csc) shipped with the SDK directly against the reference assemblies:
+    // ~1s instead of the several seconds `dotnet build` takes, and no NuGet restore (no network).
+    // Debug builds so exceptions report the candidate's line numbers.
+    image: "mcr.microsoft.com/dotnet/sdk:10.0",
+    compileSeconds: 20,
+    build: (src, out) => ({
+      compile:
+        `export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 && ` +
+        `D=$(dirname "$(readlink -f "$(command -v dotnet)")") && ` +
+        `SDK=$(ls -d "$D"/sdk/*/ | sort -V | tail -n 1) && ` +
+        `REF=$(ls -d "$D"/packs/Microsoft.NETCore.App.Ref/*/ref/net*/ | sort -V | tail -n 1) && ` +
+        `FW=$(ls "$D"/shared/Microsoft.NETCore.App | sort -V | tail -n 1) && ` +
+        `mkdir -p ${sh(out + "/cs")} && ` +
+        `for f in "$REF"*.dll; do printf -- '-r:%s\\n' "$f"; done > ${sh(out + "/cs/refs.rsp")} && ` +
+        `printf '{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":"%s"}}}' "$FW" > ${sh(out + "/cs/prog.runtimeconfig.json")} && ` +
+        `dotnet "$SDK"Roslyn/bincore/csc.dll -nologo -noconfig -langversion:latest -nullable:disable -optimize- -debug:embedded -warn:0 ` +
+        `-main:__DefaangMain -out:${sh(out + "/cs/prog.dll")} @${sh(out + "/cs/refs.rsp")} ${sh(src + "/Solution.cs")} ${sh(src + "/Main.cs")}`,
+      exec: `dotnet ${sh(out + "/cs/prog.dll")}`,
+    }),
+  },
 };
 
 /** Images built locally rather than pulled: tag -> build context directory (relative to the repo root). */

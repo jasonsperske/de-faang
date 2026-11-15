@@ -2,12 +2,13 @@
 
 export type QuestionType = "coding" | "debugging" | "system-design";
 export type Difficulty = "easy" | "medium" | "hard";
-export type Language = "python" | "javascript" | "typescript" | "go" | "c" | "cpp" | "rust" | "java";
+export type Language = "python" | "javascript" | "typescript" | "go" | "c" | "cpp" | "rust" | "java" | "csharp";
 export const LANGUAGES: { id: Language; label: string; ext: string; monaco: string; tabSize: number; insertSpaces: boolean }[] = [
   { id: "python", label: "Python 3", ext: "py", monaco: "python", tabSize: 4, insertSpaces: true },
   { id: "javascript", label: "JavaScript (Node)", ext: "js", monaco: "javascript", tabSize: 2, insertSpaces: true },
   { id: "typescript", label: "TypeScript (Node)", ext: "ts", monaco: "typescript", tabSize: 2, insertSpaces: true },
   { id: "java", label: "Java 25", ext: "java", monaco: "java", tabSize: 4, insertSpaces: true },
+  { id: "csharp", label: "C# 14 (.NET 10)", ext: "cs", monaco: "csharp", tabSize: 4, insertSpaces: true },
   { id: "cpp", label: "C++20 (GCC)", ext: "cpp", monaco: "cpp", tabSize: 4, insertSpaces: true },
   { id: "c", label: "C17 (GCC)", ext: "c", monaco: "c", tabSize: 4, insertSpaces: true },
   { id: "go", label: "Go 1.25", ext: "go", monaco: "go", tabSize: 4, insertSpaces: false },

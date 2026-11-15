@@ -16,12 +16,14 @@ const LangRecord = z.object({
   python: z.string().optional(),
   javascript: z.string(),
   typescript: z.string().optional(),
-  // Optional overrides; by default derived from the JavaScript (or, for Rust, Python) name.
+  // Optional overrides; by default derived from the JavaScript (or, for Rust, Python) name. C# uses
+  // the JavaScript name in PascalCase for functions and as-is for classes.
   go: z.string().optional(),
   c: z.string().optional(),
   cpp: z.string().optional(),
   rust: z.string().optional(),
   java: z.string().optional(),
+  csharp: z.string().optional(),
 });
 
 const TypeStr = z.string().refine((t) => {
@@ -40,7 +42,7 @@ const SignatureSchema = z.object({
   /** exact: deep equality. unordered: top-level array order is ignored. */
   compare: z.enum(["exact", "unordered"]).default("exact"),
   /**
-   * Types, needed for Go, C, C++, Rust and Java (see server/runner/signature.ts).
+   * Types, needed for Go, C, C++, Rust, Java and C# (see server/runner/signature.ts).
    * function kind: params + returns. class kind: init (constructor params) + methods by op name.
    */
   params: z.array(Param).optional(),
