@@ -62,5 +62,6 @@
   { "id": "jvns-debugging-manifesto", "title": "Julia Evans — A debugging manifesto", "url": "https://jvns.ca/blog/2022/12/08/a-debugging-manifesto/", "topics": ["debugging", "process"] },
   { "id": "debugging-rules", "title": "David Agans — Debugging: the 9 indispensable rules", "url": "https://debuggingrules.com/", "topics": ["debugging", "process", "reproduction"] },
   { "id": "react-devtools", "title": "React — React Developer Tools", "url": "https://react.dev/learn/react-developer-tools", "topics": ["react", "debugging", "frontend"] },
-  { "id": "vite-hmr", "title": "Vite — Features: hot module replacement", "url": "https://vite.dev/guide/features#hot-module-replacement", "topics": ["vite", "hot reloading", "frontend tooling"] }
+  { "id": "vite-hmr", "title": "Vite — Features: hot module replacement", "url": "https://vite.dev/guide/features#hot-module-replacement", "topics": ["vite", "hot reloading", "frontend tooling"] },
+  { "id": "glob-patterns", "title": "Wikipedia — glob (programming)", "url": "https://en.wikipedia.org/wiki/Glob_(programming)", "topics": ["wildcards", "pattern matching"] }
 ]
