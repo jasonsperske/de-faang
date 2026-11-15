@@ -10,7 +10,7 @@ Take the fear out of FAANG interviews. **de-faang** runs realistic coding, debug
 
 ### The interview room
 
-- **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, TypeScript, Java, C++, C, Go, or Rust; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
+- **HackerRank-style coding pad.** Monaco editor; Python, JavaScript, TypeScript, Java, C#, C++, C, Go, or Rust; sample tests, your own custom inputs, and hidden tests on submit. Code runs in a network-less Docker sandbox.
 - **Debugging rounds.** A bug report and a real app to fix: a project browser in the prompt panel, a multi-file editor with hot reloading, the running app in a preview, its logs, and a terminal. There's no architecture overview, so finding your way around is part of the round. See [Debugging questions](#debugging-questions).
 - **System design whiteboard.** Excalidraw canvas plus a markdown notes pad. The interviewer "sees" your diagram as a text summary on every turn, and the evaluator gets the PNG.
 - **Live interviewer chat.** Think out loud; every message carries a snapshot of your code (or notes and diagram) and recent test runs, so the interviewer reacts to what you're actually doing.
@@ -95,7 +95,7 @@ npm run dev                   # API on :4317, UI on http://localhost:5173
 - `.env` and which LLM providers have keys (values are never printed).
 - Docker CLI, daemon access, each language's image, and disk space for missing images.
 - A sandboxed test container started with the runner's isolation flags (skip with `npm run doctor -- --quick`).
-- With `DEFAANG_RUNNER=local`: the host toolchains (`python3`, `node`, `gcc`, `g++`, `go`, `rustc`, `javac`).
+- With `DEFAANG_RUNNER=local`: the host toolchains (`python3`, `node`, `gcc`, `g++`, `go`, `rustc`, `javac`, `dotnet`).
 - Whether the app's ports are free, or de-faang is already running on them.
 
 Or run a single production server with `npm start`, which builds the UI and serves it at http://localhost:4317.
@@ -112,7 +112,7 @@ To click through the UI without API keys or token spend, set `DEFAANG_MOCK_LLM=1
 | `OPENAI_MODEL` | `gpt-5.3-codex` | Any Responses-API model. |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | e.g. `gemini-4-argon` if your key has access. |
 | `MUSE_MODEL` | `muse-spark-1.3` | `muse-wonder-1.0` is Meta's most capable model (preview); `muse-ember-1.0` is the efficient one. |
-| `DEFAANG_RUNNER` | `docker` | `local` runs code with your host's `python3`/`node`/`gcc`/`go`/`rustc`/`javac`, with **no isolation**. |
+| `DEFAANG_RUNNER` | `docker` | `local` runs code with your host's `python3`/`node`/`gcc`/`go`/`rustc`/`javac`/`dotnet`, with **no isolation**. |
 | `DEFAANG_RUN_TIMEOUT` | `10` | Seconds per run. |
 | `DEFAANG_MOCK_LLM` | | `1` = offline canned responses. |
 
@@ -178,7 +178,7 @@ Then run `npm run readmes` to generate the question's `README.md` and its row in
 
 - **Function questions:** each test is `{ "args": [arg1, arg2], "expected": ... }`. Entry-point names can differ per language (`two_sum` vs `twoSum`).
 - **Class questions** (e.g. LRU cache) use the LeetCode convention: `{ "ops": ["LRUCache", "put", "get"], "args": [[2], [1, 1], [1]], "expected": [null, null, 1] }`.
-- **Typed signature (Java, C++, C, Go, Rust):** compiled languages need types. Add `"params": [{ "name": "nums", "type": "int[]" }, { "name": "target", "type": "int" }], "returns": "int[]"` to a function signature, or `"init": [...]` (constructor parameters) and `"methods": { "get": { "params": [...], "returns": "int" } }` to a class signature. Types are `int`, `long`, `double`, `bool`, `string`, any of those with `[]` or `[][]`, and `void`. Starters, entry names and harnesses for every compiled language are generated from this, following LeetCode conventions: `class Solution` in Java/C++, `impl Solution` in Rust, a plain function in Go and C with `(pointer, size)` array parameters and `returnSize` outputs in C, `Constructor` plus capitalised methods for Go classes, and `lRUCacheCreate/Get/Free` functions for C classes. C supports arrays up to `[][]` (`string[]` for strings). A question without types is offered only in Python, JavaScript and TypeScript.
+- **Typed signature (Java, C#, C++, C, Go, Rust):** compiled languages need types. Add `"params": [{ "name": "nums", "type": "int[]" }, { "name": "target", "type": "int" }], "returns": "int[]"` to a function signature, or `"init": [...]` (constructor parameters) and `"methods": { "get": { "params": [...], "returns": "int" } }` to a class signature. Types are `int`, `long`, `double`, `bool`, `string`, any of those with `[]` or `[][]`, and `void`. Starters, entry names and harnesses for every compiled language are generated from this, following LeetCode conventions: `class Solution` in Java/C#/C++ (with PascalCase method names in C#), `impl Solution` in Rust, a plain function in Go and C with `(pointer, size)` array parameters and `returnSize` outputs in C, `Constructor` plus capitalised methods for Go classes, and `lRUCacheCreate/Get/Free` functions for C classes. C supports arrays up to `[][]` (`string[]` for strings). A question without types is offered only in Python, JavaScript and TypeScript.
 - **Entry names:** only `javascript` is required; Python defaults to its snake_case form and TypeScript to the same name. Without starter files, starters for every language are generated from the typed signature.
 - **`signature.compare`:** `exact` (the default; floats compared with a tolerance) or `unordered`, which ignores top-level array order.
 - **Multipart questions** replace `signature` with a `parts` list. Copy `questions/templates/multipart-coding/` to start one (see below).
@@ -240,7 +240,7 @@ Each part has its own typed signature (required, so every language works), tests
 During a round:
 
 - **Run** tests the current part. Custom inputs use the current part's signature.
-- **Finish part N** runs the current part's public and hidden tests, saves them (`runs/part-N-submit.json`, `evidence/part-N-*`), reveals the next part, and adds its stub to your code in every language. Java and C++ methods go inside your existing `class Solution`, Rust gets another `impl Solution` block, and other languages get a new function at the end. If your code already defines the entry point (e.g. a later part that extends the same class), it's left alone.
+- **Finish part N** runs the current part's public and hidden tests, saves them (`runs/part-N-submit.json`, `evidence/part-N-*`), reveals the next part, and adds its stub to your code in every language. Java, C# and C++ methods go inside your existing `class Solution`, Rust gets another `impl Solution` block, and other languages get a new function at the end. If your code already defines the entry point (e.g. a later part that extends the same class), it's left alone.
 - **Submit** (or **End round** before the last part) grades every part reached against your final code. Unreached parts stay hidden.
 - The interviewer knows every part, so it can pace the round, but it won't mention a part before you reach it. The evaluation packet records how far you got and when each part was handed in.
 
@@ -281,7 +281,7 @@ server/   Fastify API
 shared/   types shared by the server and the UI
 ```
 
-How the runner works: your code is combined with a small language-specific harness, so error line numbers match the editor. For Python and JavaScript/TypeScript the harness reads test cases on stdin, calls your function or class for each case while capturing stdout, errors, and timing, and prints one JSON result line. For compiled languages the harness is generated with the test inputs as typed literals, compiled next to your file (`Solution.java`, `solution.cpp`, `solution.go`, ...), and prints a marked result per case, so a segfault or time-out in one case still reports the cases before it. Compilation doesn't count toward the time limit. Images: `python:3.12-slim`, `node:22-slim`, `gcc:15` (C/C++), `eclipse-temurin:25-jdk`, `rust:1-slim-bookworm`, and `defaang-go:1`, built locally from `docker/go/` with a pre-compiled standard library so Go builds take about a second instead of fifteen. Missing images download in the background; Python/JS work as soon as theirs are present. The Docker sandbox runs with `--network none`, a read-only filesystem, 512 MB of memory, 1 CPU, a 64-process cap, and an unprivileged user.
+How the runner works: your code is combined with a small language-specific harness, so error line numbers match the editor. For Python and JavaScript/TypeScript the harness reads test cases on stdin, calls your function or class for each case while capturing stdout, errors, and timing, and prints one JSON result line. For compiled languages the harness is generated with the test inputs as typed literals, compiled next to your file (`Solution.java`, `Solution.cs`, `solution.cpp`, `solution.go`, ...), and prints a marked result per case, so a segfault or time-out in one case still reports the cases before it. Compilation doesn't count toward the time limit. Images: `python:3.12-slim`, `node:22-slim`, `gcc:15` (C/C++), `eclipse-temurin:25-jdk`, `mcr.microsoft.com/dotnet/sdk:10.0` (C#, compiled by calling the SDK's `csc` directly, about a second per build), `rust:1-slim-bookworm`, and `defaang-go:1`, built locally from `docker/go/` with a pre-compiled standard library so Go builds take about a second instead of fifteen. Missing images download in the background; Python/JS work as soon as theirs are present. The Docker sandbox runs with `--network none`, a read-only filesystem, 512 MB of memory, 1 CPU, a 64-process cap, and an unprivileged user.
 
 Claude requests enable server-side refusal fallbacks (`fallbacks: "default"`), so a safety-classifier false positive doesn't end an interview turn. The interviewer's system prompt is cached across turns.
 

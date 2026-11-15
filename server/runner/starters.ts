@@ -64,6 +64,7 @@ export function definesEntry(lang: Language, code: string, kind: "function" | "c
           javascript: [new RegExp(`\\bclass\\s+${e}\\b`)],
           typescript: [new RegExp(`\\bclass\\s+${e}\\b`)],
           java: [new RegExp(`\\bclass\\s+${e}\\b`)],
+          csharp: [new RegExp(`\\bclass\\s+${e}\\b`)],
           cpp: [new RegExp(`\\b(class|struct)\\s+${e}\\b`)],
           go: [new RegExp(`\\btype\\s+${e}\\s+struct\\b`)],
           rust: [new RegExp(`\\bstruct\\s+${e}\\b`)],
@@ -74,6 +75,7 @@ export function definesEntry(lang: Language, code: string, kind: "function" | "c
           javascript: [new RegExp(`\\bfunction\\s+${e}\\b`), new RegExp(`\\b(const|let|var)\\s+${e}\\b`)],
           typescript: [new RegExp(`\\bfunction\\s+${e}\\b`), new RegExp(`\\b(const|let|var)\\s+${e}\\b`)],
           java: [new RegExp(`\\b${e}\\s*\\(`)],
+          csharp: [new RegExp(`\\b${e}\\s*\\(`)],
           cpp: [new RegExp(`\\b${e}\\s*\\(`)],
           go: [new RegExp(`\\bfunc\\s+${e}\\s*\\(`)],
           rust: [new RegExp(`\\bfn\\s+${e}\\s*[(<]`)],
@@ -83,7 +85,7 @@ export function definesEntry(lang: Language, code: string, kind: "function" | "c
 }
 
 /**
- * Finds the index of the `}` that closes `class Solution` in Java or C++ code, skipping braces
+ * Finds the index of the `}` that closes `class Solution` in Java, C# or C++ code, skipping braces
  * inside strings, character literals and comments. Returns -1 when there's no such class.
  */
 export function solutionClassEnd(code: string): number {
@@ -108,14 +110,14 @@ export function solutionClassEnd(code: string): number {
 }
 
 /**
- * Adds a part's stub to the candidate's code: Java and C++ methods go inside the existing
+ * Adds a part's stub to the candidate's code: Java, C# and C++ methods go inside the existing
  * `class Solution`; everything else is appended to the file. Code that already defines the entry
  * point is returned unchanged (e.g. a later part that extends the same class).
  */
 export function addPartStub(lang: Language, code: string, sig: TypedSignature, entry: string): string {
   if (definesEntry(lang, code, sig.kind, entry)) return code;
   const pieces = starterPieces(lang, sig, entry);
-  if (pieces.member && (lang === "java" || lang === "cpp")) {
+  if (pieces.member && (lang === "java" || lang === "csharp" || lang === "cpp")) {
     const end = solutionClassEnd(code);
     if (end !== -1) {
       const before = code.slice(0, end).replace(/\s*$/, "");

@@ -26,6 +26,7 @@ export const TOOLCHAINS = {
   go: { image: "defaang-go:1", local: [["go", "version"], ["timeout", "--version"]] },
   rust: { image: "rust:1-slim-bookworm", local: [["rustc", "--version"], ["timeout", "--version"]] },
   java: { image: "eclipse-temurin:25-jdk", local: [["javac", "-version"], ["java", "-version"], ["timeout", "--version"]] },
+  csharp: { image: "mcr.microsoft.com/dotnet/sdk:10.0", local: [["dotnet", "--list-sdks"], ["timeout", "--version"]] },
 };
 /** Images built from this repo instead of pulled. */
 export const LOCAL_IMAGES = { "defaang-go:1": "docker/go", "defaang-node-dev:1": "docker/node-dev" };

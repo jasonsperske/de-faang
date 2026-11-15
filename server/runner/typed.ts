@@ -1,4 +1,4 @@
-// Starters and test harnesses for the statically typed languages (Go, C, C++, Rust, Java).
+// Starters and test harnesses for the statically typed languages (Go, C, C++, Rust, Java, C#).
 //
 // Test inputs are compiled into the program as typed literals, so the harness needs no JSON parser.
 // For every case the program prints BEGIN_MARK, runs the case (the candidate's own prints land
@@ -22,8 +22,8 @@ import {
   type TypeRef,
 } from "./signature.ts";
 
-export type TypedLanguage = "go" | "c" | "cpp" | "rust" | "java";
-export const TYPED_LANGUAGES: TypedLanguage[] = ["java", "cpp", "c", "go", "rust"];
+export type TypedLanguage = "go" | "c" | "cpp" | "rust" | "java" | "csharp";
+export const TYPED_LANGUAGES: TypedLanguage[] = ["java", "csharp", "cpp", "c", "go", "rust"];
 export const isTypedLanguage = (l: Language): l is TypedLanguage => (TYPED_LANGUAGES as string[]).includes(l);
 
 export const BEGIN_MARK = "\n@@DEFAANG_BEGIN@@\n";
@@ -36,6 +36,7 @@ export const SOLUTION_FILE: Record<TypedLanguage, string> = {
   cpp: "solution.cpp",
   rust: "solution.rs",
   java: "Solution.java",
+  csharp: "Solution.cs",
 };
 
 export interface Case {
@@ -48,12 +49,21 @@ export interface Case {
 /** Entry point name for a typed language, derived from the JS/Python names unless overridden. */
 export function defaultEntry(lang: TypedLanguage, kind: "function" | "class", entry: { python: string; javascript: string }): string {
   if (kind === "class") return entry.javascript;
-  return lang === "rust" ? entry.python : entry.javascript;
+  return lang === "rust" ? entry.python : lang === "csharp" ? upperFirst(entry.javascript) : entry.javascript;
 }
 
 const methodName = (lang: TypedLanguage, cls: string, op: string) =>
-  lang === "go" ? upperFirst(op) : lang === "rust" ? snake(op) : lang === "c" ? lowerFirst(cls) + upperFirst(op) : op;
-const paramName = (lang: TypedLanguage, name: string) => (lang === "rust" ? snake(name) : name);
+  lang === "go" || lang === "csharp" ? upperFirst(op) : lang === "rust" ? snake(op) : lang === "c" ? lowerFirst(cls) + upperFirst(op) : op;
+
+/** C# reserved words; a parameter with one of these names is written as @name. */
+const CSHARP_KEYWORDS = new Set(
+  ("abstract as base bool break byte case catch char checked class const continue decimal default delegate do double else enum event " +
+    "explicit extern false finally fixed float for foreach goto if implicit in int interface internal is lock long namespace new null " +
+    "object operator out override params private protected public readonly ref return sbyte sealed short sizeof stackalloc static " +
+    "string struct switch this throw true try typeof uint ulong unchecked unsafe ushort using virtual void volatile while").split(" "),
+);
+const paramName = (lang: TypedLanguage, name: string) =>
+  lang === "rust" ? snake(name) : lang === "csharp" && CSHARP_KEYWORDS.has(name) ? `@${name}` : name;
 
 // ------------------------------------------------------------------------------- type mapping
 
@@ -63,6 +73,7 @@ const SCALAR: Record<TypedLanguage, Record<TypeRef["base"], string>> = {
   cpp: { int: "int", long: "long long", double: "double", bool: "bool", string: "string", void: "void" },
   rust: { int: "i32", long: "i64", double: "f64", bool: "bool", string: "String", void: "()" },
   c: { int: "int", long: "long long", double: "double", bool: "bool", string: "char*", void: "void" },
+  csharp: { int: "int", long: "long", double: "double", bool: "bool", string: "string", void: "void" },
 };
 
 function typeOf(lang: TypedLanguage, t: TypeRef): string {
@@ -73,6 +84,7 @@ function typeOf(lang: TypedLanguage, t: TypeRef): string {
     case "go":
       return `[]${inner}`;
     case "java":
+    case "csharp":
       return `${inner}[]`;
     case "cpp":
       return `vector<${inner}>`;
@@ -100,7 +112,7 @@ export function supportsLanguage(lang: TypedLanguage, sig: TypedSignature): bool
 // ------------------------------------------------------------------------------- literals
 
 function intLit(n: number, t: TypeRef["base"], lang: TypedLanguage): string {
-  if (t === "long") return lang === "java" ? `${n}L` : lang === "c" || lang === "cpp" ? `${n}LL` : String(n);
+  if (t === "long") return lang === "java" || lang === "csharp" ? `${n}L` : lang === "c" || lang === "cpp" ? `${n}LL` : String(n);
   if (n === -(2 ** 31) && (lang === "c" || lang === "cpp" || lang === "java")) return "(-2147483647 - 1)";
   return String(n);
 }
@@ -120,6 +132,7 @@ function scalarLit(lang: TypedLanguage, v: unknown, t: TypeRef): string {
       if (lang === "rust") return `String::from(${quote(v as string, (cp) => `\\u{${cp.toString(16)}}`)})`;
       if (lang === "go") return quote(v as string, (cp) => `\\x${cp.toString(16).padStart(2, "0")}`);
       if (lang === "cpp") return `string(${quote(v as string, octal)})`;
+      if (lang === "csharp") return quote(v as string, (cp) => `\\u${cp.toString(16).padStart(4, "0")}`);
       return quote(v as string, octal);
     default:
       throw new Error("void has no literal");
@@ -135,7 +148,8 @@ function lit(lang: Exclude<TypedLanguage, "c">, v: unknown, t: TypeRef): string 
     case "go":
       return `${typeOf("go", t)}{${items}}`;
     case "java":
-      return `new ${typeOf("java", t)}{${items}}`;
+    case "csharp":
+      return `new ${typeOf(lang, t)}{${items}}`;
     case "cpp":
       return `${typeOf("cpp", t)}{${items}}`;
     case "rust":
@@ -177,6 +191,8 @@ export function buildTypedProgram(lang: TypedLanguage, sig: TypedSignature, entr
       return { "solution.go": userCode, "harness.go": goHarness(sig, entry, cases) };
     case "java":
       return { "Solution.java": userCode, "Main.java": javaHarness(sig, entry, cases) };
+    case "csharp":
+      return { "Solution.cs": userCode, "Main.cs": csharpHarness(sig, entry, cases) };
     case "cpp":
       return { "main.cpp": `#include <bits/stdc++.h>\nusing namespace std;\n#line 1 "solution.cpp"\n${userCode}\n#line 1 "harness.cpp"\n${cppHarness(sig, entry, cases)}` };
     case "rust":
@@ -431,6 +447,125 @@ public class Main {
         String ms = String.format(Locale.ROOT, "%.3f", (System.nanoTime() - t0) / 1e6);
         System.out.print("\n@@DEFAANG_END@@{\"ms\":" + ms + (err == null ? ",\"output\":" + out : ",\"error\":" + esc(err)) + "}\n");
         System.out.flush();
+    }
+`;
+
+// ---------------------------------------------------------------------------------------- C#
+
+function csharpHarness(sig: TypedSignature, entry: string, cases: Case[]): string {
+  const body = cases.map((c) => {
+    const lines: string[] = [];
+    if (sig.kind === "function") {
+      const names = sig.params!.map((p, i) => {
+        const t = parseType(p.type);
+        lines.push(`${typeOf("csharp", t)} a${i} = ${lit("csharp", c.args[i], t)};`);
+        return `a${i}`;
+      });
+      const call = `new Solution().${entry}(${names.join(", ")})`;
+      lines.push(parseType(sig.returns!).base === "void" ? `${call};\nreturn null;` : `return ${call};`);
+    } else {
+      lines.push("var __r = new List<object>();");
+      lines.push(`var __o = new ${entry}(${sig.init!.map((p, i) => lit("csharp", (c.args[0] as unknown[])[i], parseType(p.type))).join(", ")});`);
+      lines.push("__r.Add(null);");
+      c.ops!.slice(1).forEach((op, j) => {
+        const m = sig.methods![op];
+        const call = `__o.${methodName("csharp", entry, op)}(${m.params.map((p, k) => lit("csharp", (c.args[j + 1] as unknown[])[k], parseType(p.type))).join(", ")})`;
+        lines.push(parseType(m.returns).base === "void" ? `${call}; __r.Add(null);` : `__r.Add(${call});`);
+      });
+      lines.push("return __r;");
+    }
+    return `        Run(() => {\n${lines.map((l) => "            " + l.replace(/\n/g, "\n            ")).join("\n")}\n        });`;
+  });
+  return `${CSHARP_RUNTIME}
+    static void Cases() {
+${body.join("\n")}
+    }
+}
+`;
+}
+
+const CSHARP_RUNTIME = String.raw`// de-faang test harness (generated)
+global using System;
+global using System.Collections.Generic;
+global using System.Linq;
+global using System.Text;
+
+public static class __DefaangMain {
+    static string Esc(string s) {
+        var b = new StringBuilder("\"");
+        foreach (char c in s) {
+            switch (c) {
+                case '"': b.Append("\\\""); break;
+                case '\\': b.Append("\\\\"); break;
+                case '\n': b.Append("\\n"); break;
+                case '\r': b.Append("\\r"); break;
+                case '\t': b.Append("\\t"); break;
+                default:
+                    if (c < 0x20) b.Append("\\u").Append(((int)c).ToString("x4"));
+                    else b.Append(c);
+                    break;
+            }
+        }
+        return b.Append('"').ToString();
+    }
+
+    static string Json(object o) {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        switch (o) {
+            case null: return "null";
+            case bool b: return b ? "true" : "false";
+            case string s: return Esc(s);
+            case char c: return Esc(c.ToString());
+            case double d: return double.IsFinite(d) ? d.ToString("R", inv) : "null";
+            case float f: return Json((double)f);
+            case decimal m: return m.ToString(inv);
+            case sbyte or byte or short or ushort or int or uint or long or ulong or nint or nuint:
+                return ((IFormattable)o).ToString(null, inv);
+            case System.Collections.IDictionary dict: {
+                var parts = new List<string>();
+                foreach (System.Collections.DictionaryEntry e in dict) parts.Add(Esc(Convert.ToString(e.Key, inv) ?? "") + ":" + Json(e.Value));
+                parts.Sort(StringComparer.Ordinal);
+                return "{" + string.Join(",", parts) + "}";
+            }
+            case System.Collections.IEnumerable items: {
+                var parts = new List<string>();
+                foreach (var x in items) parts.Add(Json(x));
+                return "[" + string.Join(",", parts) + "]";
+            }
+        }
+        return Esc(o.ToString() ?? "");
+    }
+
+    static void Run(Func<object> body) {
+        var stdout = Console.Out;
+        stdout.Write("\n@@DEFAANG_BEGIN@@\n");
+        stdout.Flush();
+        var t0 = System.Diagnostics.Stopwatch.StartNew();
+        string res;
+        try {
+            res = "\"output\":" + Json(body());
+        } catch (Exception e) {
+            var err = e.GetType().FullName + ": " + e.Message;
+            var frames = new System.Diagnostics.StackTrace(e, true).GetFrames();
+            foreach (var f in frames) {
+                var file = f.GetFileName();
+                if (file != null && System.IO.Path.GetFileName(file) == "Solution.cs" && f.GetFileLineNumber() > 0) {
+                    err += " (line " + f.GetFileLineNumber() + ", in " + f.GetMethod()?.Name + ")";
+                    break;
+                }
+            }
+            res = "\"error\":" + Esc(err);
+        }
+        var ms = t0.Elapsed.TotalMilliseconds.ToString("F3", System.Globalization.CultureInfo.InvariantCulture);
+        stdout.Write("\n@@DEFAANG_END@@{\"ms\":" + ms + "," + res + "}\n");
+        stdout.Flush();
+    }
+
+    public static void Main() {
+        // Run on a thread with a large stack so deep recursion behaves like the other languages.
+        var t = new System.Threading.Thread(Cases, 256 << 20);
+        t.Start();
+        t.Join();
     }
 `;
 
@@ -859,7 +994,7 @@ export function typedStarter(lang: TypedLanguage, sig: TypedSignature, entry: st
 
 /**
  * A starter split into a file header (package line, imports, notes) and the body for this signature.
- * For Java and C++ function questions `member` is the method alone, so a multipart question can add
+ * For Java, C# and C++ function questions `member` is the method alone, so a multipart question can add
  * a later part's method to an existing `class Solution`.
  */
 export interface StarterPieces {
@@ -871,7 +1006,7 @@ export interface StarterPieces {
 export function typedStarterPieces(lang: TypedLanguage, sig: TypedSignature, entry: string): StarterPieces {
   const t = (s: string) => typeOf(lang, parseType(s));
   const isVoid = (s: string) => parseType(s).base === "void";
-  const params = (ps: Param[]) => ps.map((p) => (lang === "go" ? `${p.name} ${t(p.type)}` : lang === "rust" ? `${paramName("rust", p.name)}: ${t(p.type)}` : lang === "c" ? cParams(p) : lang === "cpp" && parseType(p.type).dims ? `${t(p.type)}& ${p.name}` : `${t(p.type)} ${p.name}`)).join(", ");
+  const params = (ps: Param[]) => ps.map((p) => (lang === "go" ? `${p.name} ${t(p.type)}` : lang === "rust" ? `${paramName("rust", p.name)}: ${t(p.type)}` : lang === "c" ? cParams(p) : lang === "cpp" && parseType(p.type).dims ? `${t(p.type)}& ${p.name}` : `${t(p.type)} ${paramName(lang, p.name)}`)).join(", ");
   const methods = Object.entries(sig.methods ?? {}) as [string, MethodSig][];
 
   switch (lang) {
@@ -889,6 +1024,15 @@ export function typedStarterPieces(lang: TypedLanguage, sig: TypedSignature, ent
       }
       const ms = methods.map(([op, m]) => `    public ${t(m.returns)} ${op}(${params(m.params)}) {\n\n    }`);
       return { header, body: `class ${entry} {\n\n    public ${entry}(${params(sig.init!)}) {\n\n    }\n\n${ms.join("\n\n")}\n}\n` };
+    }
+    case "csharp": {
+      const header = "using System;\nusing System.Collections.Generic;\nusing System.Linq;\n\n";
+      if (sig.kind === "function") {
+        const member = `    public ${t(sig.returns!)} ${entry}(${params(sig.params!)}) {\n\n    }\n`;
+        return { header, body: `public class Solution {\n${member}}\n`, member };
+      }
+      const ms = methods.map(([op, m]) => `    public ${t(m.returns)} ${methodName("csharp", entry, op)}(${params(m.params)}) {\n\n    }`);
+      return { header, body: `public class ${entry} {\n\n    public ${entry}(${params(sig.init!)}) {\n\n    }\n\n${ms.join("\n\n")}\n}\n` };
     }
     case "cpp": {
       const header = "// The standard library is already included and `using namespace std;` is in effect.\n\n";
