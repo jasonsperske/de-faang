@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import type { Language, QuestionSummary, QuestionView, Strictness, TestCase } from "../shared/types.ts";
+import type { Language, ProjectFile, QuestionSummary, QuestionView, Strictness, TestCase } from "../shared/types.ts";
 import { LANGUAGES } from "../shared/types.ts";
 import { ROOT } from "./paths.ts";
 import { isTyped, parseType, snake } from "./runner/signature.ts";
@@ -16,12 +16,14 @@ const LangRecord = z.object({
   python: z.string().optional(),
   javascript: z.string(),
   typescript: z.string().optional(),
-  // Optional overrides; by default derived from the JavaScript (or, for Rust, Python) name.
+  // Optional overrides; by default derived from the JavaScript (or, for Rust, Python) name. C# uses
+  // the JavaScript name in PascalCase for functions and as-is for classes.
   go: z.string().optional(),
   c: z.string().optional(),
   cpp: z.string().optional(),
   rust: z.string().optional(),
   java: z.string().optional(),
+  csharp: z.string().optional(),
 });
 
 const TypeStr = z.string().refine((t) => {
@@ -40,7 +42,7 @@ const SignatureSchema = z.object({
   /** exact: deep equality. unordered: top-level array order is ignored. */
   compare: z.enum(["exact", "unordered"]).default("exact"),
   /**
-   * Types, needed for Go, C, C++, Rust and Java (see server/runner/signature.ts).
+   * Types, needed for Go, C, C++, Rust, Java and C# (see server/runner/signature.ts).
    * function kind: params + returns. class kind: init (constructor params) + methods by op name.
    */
   params: z.array(Param).optional(),
@@ -88,7 +90,7 @@ const QuestionMeta = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
     title: z.string(),
-    type: z.enum(["coding", "system-design"]),
+    type: z.enum(["coding", "debugging", "system-design"]),
     difficulty: z.enum(["easy", "medium", "hard"]),
     durationMinutes: z.number().int().positive(),
     tags: z.array(z.string()),
@@ -111,11 +113,17 @@ const QuestionMeta = z
       deepDives: z.array(z.string()).default([]),
     }),
     resources: z.array(z.string()).default([]),
-    /** Coding questions: settings for AI-assisted rounds. */
+    /**
+     * Debugging questions: how to run the project in project/. `command` starts its dev server (with
+     * hot reloading) from the project root; the editor opens `open` first.
+     */
+    app: z.object({ command: z.array(z.string()).min(1).default(["npm", "run", "dev"]), open: z.string().optional() }).optional(),
+    /** Coding and debugging questions: settings for AI-assisted rounds. */
     ai: AiSection.default({ rubric: "ai-coding", dimensions: [], watchFor: [] }),
   })
   .refine((m) => m.type !== "coding" || Boolean(m.signature) !== Boolean(m.parts), "A coding question needs either a signature or parts (not both).")
-  .refine((m) => !m.parts || new Set(m.parts.map((p) => p.id)).size === m.parts.length, "Part ids must be unique.");
+  .refine((m) => !m.parts || new Set(m.parts.map((p) => p.id)).size === m.parts.length, "Part ids must be unique.")
+  .refine((m) => m.type !== "debugging" || (!m.signature && !m.parts), "A debugging question has a project/ folder and checks, not a signature or parts.");
 export type QuestionMeta = z.infer<typeof QuestionMeta>;
 
 const TestCaseSchema = z.object({
@@ -153,6 +161,8 @@ export interface Question {
   /** Tests of the first part (all tests for a single-part question). */
   tests?: { public: TestCase[]; hidden: TestCase[] };
   reference?: string; // python reference solution, used to compute expected output for custom inputs
+  /** Debugging questions: the project the candidate debugs (a copy goes into each session). */
+  project?: { dir: string; command: string[]; open?: string };
 }
 
 /** Fills in entry-point names for every language the signature can support. */
@@ -176,6 +186,12 @@ function loadQuestion(dir: string): Question {
   const meta = QuestionMeta.parse(JSON.parse(fs.readFileSync(path.join(dir, "question.json"), "utf8")));
   const prompt = fs.readFileSync(path.join(dir, "prompt.md"), "utf8");
   const q: Question = { meta, dir, prompt, starter: {}, languages: [], parts: [], multipart: Boolean(meta.parts) };
+  if (meta.type === "debugging") {
+    for (const need of ["project", path.join("checks", "run.mjs")])
+      if (!fs.existsSync(path.join(dir, need))) throw new Error(`Debugging question ${meta.id} is missing ${need}`);
+    q.project = { dir: path.join(dir, "project"), command: meta.app?.command ?? ["npm", "run", "dev"], open: meta.app?.open };
+    return q;
+  }
   if (meta.type !== "coding") return q;
 
   if (meta.parts) {
@@ -237,7 +253,7 @@ let cache: Map<string, Question> | null = null;
 export function loadQuestions(force = false): Map<string, Question> {
   if (cache && !force) return cache;
   const map = new Map<string, Question>();
-  for (const type of ["coding", "system-design"]) {
+  for (const type of ["coding", "debugging", "system-design"]) {
     const base = path.join(QUESTIONS_DIR, type);
     if (!fs.existsSync(base)) continue;
     for (const name of fs.readdirSync(base).sort()) {
@@ -272,8 +288,8 @@ export function summarize(q: Question): QuestionSummary {
   };
 }
 
-/** What the candidate is allowed to see, given strictness and progress. */
-export function questionView(q: Question, strictness: Strictness, submitted: boolean, part = 0): QuestionView {
+/** What the candidate is allowed to see, given strictness and progress. `files` lists the session's project (debugging questions). */
+export function questionView(q: Question, strictness: Strictness, submitted: boolean, part = 0, files?: ProjectFile[]): QuestionView {
   const coding = q.meta.type === "coding";
   const current = coding ? q.parts[Math.min(part, q.parts.length - 1)] : undefined;
   return {
@@ -285,5 +301,6 @@ export function questionView(q: Question, strictness: Strictness, submitted: boo
     publicTests: strictness === "strict" ? undefined : current?.tests.public,
     signature: current ? { kind: current.signature.kind, entry: current.signature.entry } : undefined,
     followUps: submitted ? q.meta.followUps : undefined,
+    project: q.project ? { files: files ?? [], open: q.project.open, checks: strictness !== "strict" } : undefined,
   };
 }

@@ -17,6 +17,10 @@ import { evaluate } from "./evaluator.ts";
 import * as S from "./sessions.ts";
 import { allLessons, appendDebrief, debriefMessages, debriefSystemPrompt, lessonSystemPrompt, listLessons, readDebrief, readLesson, saveLesson } from "./debrief.ts";
 import { aiTimeline, aiUsage, assistantMessages, assistantSystemPrompt, composePrompt, DEFAULT_POLICY, loadPolicies, usageLine } from "./assistant.ts";
+import { changesDiff, deleteProjectFile, listFiles, projectChanges, projectDir, readProjectFile, writeProjectFile } from "./debug/project.ts";
+import { appStatus, cleanupStaleApps, runCommand, startApp, stopAllApps, stopApp } from "./debug/app.ts";
+import { runChecks } from "./debug/checks.ts";
+import { activityLines } from "./interviewer.ts";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" }, bodyLimit: 25 * 1024 * 1024 });
 
@@ -52,12 +56,13 @@ function view(id: string): SessionView {
   if (lastPartResult && hide) lastPartResult = redact(lastPartResult);
   return {
     session,
-    question: questionView(q, session.config.strictness, submitted, part),
+    question: questionView(q, session.config.strictness, submitted, part, q.project ? listFiles(projectDir(id)) : undefined),
     transcript: S.readTranscript(id),
     folder: path.relative(ROOT, path.join(SESSIONS_DIR, id)),
     lastSubmit,
     lastPartResult,
     ai: session.config.format === "ai" ? S.readAiLog(id) : undefined,
+    activity: q.project ? S.readActivity(id) : undefined,
   };
 }
 
@@ -83,8 +88,10 @@ app.post("/api/sessions", async (req) => {
     .parse(req.body);
   getProvider(body.provider); // fail fast if the provider isn't configured
   const { questionId, ...config } = body;
+  const qType = getQuestion(questionId).meta.type;
+  if (qType !== "coding") delete config.language;
   if (config.format === "ai") {
-    if (getQuestion(questionId).meta.type !== "coding") throw Object.assign(new Error("AI-assisted rounds are for coding questions."), { statusCode: 400 });
+    if (qType === "system-design") throw Object.assign(new Error("AI-assisted rounds are for coding and debugging questions."), { statusCode: 400 });
     const policies = loadPolicies();
     const policy = policies.find((p) => p.id === (config.aiPolicy ?? DEFAULT_POLICY)) ?? policies[0];
     if (!policy && !config.aiSystemPrompt?.trim()) throw Object.assign(new Error("No AI policies found in ai-policies/."), { statusCode: 500 });
@@ -159,13 +166,25 @@ app.post("/api/sessions/:id/run", async (req) => {
 
 app.post("/api/sessions/:id/submit", async (req) => {
   const { id } = IdParams.parse(req.params);
-  const ws = Workspace.parse(req.body);
   const state = S.loadState(id);
   if (state.status !== "in_progress") throw Object.assign(new Error("Already submitted"), { statusCode: 409 });
   const q = getQuestion(state.questionId);
-  applyWorkspace(state, ws);
+  // Debugging rounds save each file as it's edited, so there's no workspace in the body.
+  const ws = q.meta.type === "debugging" ? undefined : Workspace.parse(req.body);
+  if (ws) applyWorkspace(state, ws);
 
-  if (q.meta.type === "coding" && "code" in ws) {
+  if (q.meta.type === "debugging") {
+    await stopApp(id);
+    const changes = projectChanges(q.project!.dir, projectDir(id));
+    const diff = changesDiff(changes);
+    const result = await runChecks(q.dir, projectDir(id), "all");
+    S.recordRun(state, undefined, diff, result, true);
+    S.writeEvidence(id, "changes.diff", diff || "# No changes\n");
+    S.writeEvidence(id, "test-results.json", JSON.stringify(result, null, 2));
+    S.writeEvidence(id, "run-history.md", S.listRuns(id).map(summarizeRun).join("\n\n") + "\n");
+    S.writeEvidence(id, "activity.md", `# Files opened and terminal commands\n\n${activityLines(state, S.readActivity(id), 4000).join("\n") || "_None._"}\n`);
+    if (state.config.format === "ai") writeAiEvidence(state, changes.flatMap((c) => c.added).join("\n"));
+  } else if (q.meta.type === "coding" && ws && "code" in ws) {
     // Multipart: every part reached so far is graded against the final code.
     const reached = q.parts.slice(0, (state.part ?? 0) + 1);
     const result = mergeResults(await Promise.all(reached.map((p) => runCases(q, ws.language, ws.code, allTests(p), { withReference: false, part: p.index }))));
@@ -175,7 +194,7 @@ app.post("/api/sessions/:id/submit", async (req) => {
     S.writeEvidence(id, "test-results.json", JSON.stringify(result, null, 2));
     S.writeEvidence(id, "run-history.md", S.listRuns(id).map(summarizeRun).join("\n\n") + "\n");
     if (state.config.format === "ai") writeAiEvidence(state, ws.code);
-  } else if ("markdown" in ws) {
+  } else if (ws && "markdown" in ws) {
     S.writeEvidence(id, "design.md", ws.markdown);
     if (ws.scene) S.writeEvidence(id, "design.excalidraw", JSON.stringify({ type: "excalidraw", version: 2, source: "de-faang", ...(ws.scene as object) }, null, 2));
     if (ws.png) S.writeEvidence(id, "design.png", Buffer.from(ws.png, "base64"));
@@ -296,19 +315,31 @@ app.post("/api/sessions/:id/assistant", async (req, reply) => {
       text: z.string().min(1).max(20_000),
       attachProblem: z.boolean(),
       attachCode: z.boolean(),
-      language: Lang,
-      code: z.string().max(200_000),
+      language: Lang.optional(),
+      code: z.string().max(600_000),
+      /** Debugging rounds: the project file the candidate has open (attached instead of "my code"). */
+      file: z.string().max(500).optional(),
     })
     .parse(req.body);
   const state = aiSession(id);
   const q = getQuestion(state.questionId);
   if (assistantBusy.has(id)) throw Object.assign(new Error("The assistant is still replying."), { statusCode: 429 });
   if (!body.text.trim()) throw Object.assign(new Error("Empty message"), { statusCode: 400 });
-  S.saveCode(state, body.language, body.code);
+  if (q.meta.type === "coding" && body.language) S.saveCode(state, body.language, body.code);
+  if (q.meta.type === "debugging" && body.file === undefined) body.attachCode = false;
 
   const sent = composePrompt(q, state, body);
   const messages = assistantMessages(S.readAiLog(id), sent);
-  const prompt = S.appendAiLog(id, { kind: "prompt", at: new Date().toISOString(), text: body.text, attachProblem: body.attachProblem, attachCode: body.attachCode, language: body.language, sent });
+  const prompt = S.appendAiLog(id, {
+    kind: "prompt",
+    at: new Date().toISOString(),
+    text: body.text,
+    attachProblem: body.attachProblem,
+    attachCode: body.attachCode,
+    language: body.language,
+    ...(body.attachCode && body.file !== undefined ? { file: body.file } : {}),
+    sent,
+  });
 
   const send = sse(reply);
   const abort = new AbortController();
@@ -346,6 +377,104 @@ app.post("/api/sessions/:id/ai-events", async (req) => {
   const lines = "code" in e ? e.code.split("\n").length : 0;
   const entry = S.appendAiLog(id, e.kind === "reset" ? { kind: "reset", at } : e.kind === "paste" ? { ...e, at, lines } : { ...e, at, lines });
   return { entry };
+});
+
+// ---------------------------------------------------------------- debugging rounds: files, app, terminal, checks
+
+function debugSession(id: string, { editable = false } = {}) {
+  const state = S.loadState(id);
+  const q = getQuestion(state.questionId);
+  if (!q.project) throw Object.assign(new Error("This round has no project."), { statusCode: 400 });
+  if (editable && state.status !== "in_progress") throw Object.assign(new Error("The round is over; the project is read-only."), { statusCode: 409 });
+  return { state, q, dir: projectDir(id) };
+}
+
+const PathQuery = z.object({ path: z.string().min(1).max(500), open: z.string().optional() });
+
+app.get("/api/sessions/:id/files", async (req) => {
+  const { dir } = debugSession(IdParams.parse(req.params).id);
+  return { files: listFiles(dir) };
+});
+
+app.get("/api/sessions/:id/file", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const { path: rel, open } = PathQuery.parse(req.query);
+  const { state, dir } = debugSession(id);
+  const content = readProjectFile(dir, rel);
+  // Opening a file is part of the investigation record (only while the round is on).
+  if (open && state.status === "in_progress") S.appendActivity(id, { kind: "open", at: new Date().toISOString(), path: rel });
+  return { path: rel, content };
+});
+
+app.put("/api/sessions/:id/file", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const body = z.object({ path: z.string().min(1).max(500), content: z.string().max(512 * 1024), create: z.boolean().default(false) }).parse(req.body);
+  const { dir } = debugSession(id, { editable: true });
+  const existed = listFiles(dir).some((f) => f.path === body.path);
+  if (body.create && existed) throw Object.assign(new Error(`${body.path} already exists`), { statusCode: 409 });
+  writeProjectFile(dir, body.path, body.content);
+  if (!existed) S.appendActivity(id, { kind: "create", at: new Date().toISOString(), path: body.path });
+  return { ok: true };
+});
+
+app.delete("/api/sessions/:id/file", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const { path: rel } = PathQuery.parse(req.query);
+  const { dir } = debugSession(id, { editable: true });
+  deleteProjectFile(dir, rel);
+  S.appendActivity(id, { kind: "delete", at: new Date().toISOString(), path: rel });
+  return { ok: true };
+});
+
+app.get("/api/sessions/:id/app", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  debugSession(id);
+  return appStatus(id);
+});
+
+app.post("/api/sessions/:id/app", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const { action } = z.object({ action: z.enum(["start", "restart", "stop"]) }).parse(req.body);
+  const { q } = debugSession(id, { editable: action !== "stop" });
+  if (action === "stop") {
+    await stopApp(id);
+    return appStatus(id);
+  }
+  return startApp(id, { command: q.project!.command }, action === "restart");
+});
+
+const terminalBusy = new Set<string>();
+
+/** Runs one terminal command in the project's environment; streams its output. */
+app.post("/api/sessions/:id/terminal", async (req, reply) => {
+  const { id } = IdParams.parse(req.params);
+  const { command } = z.object({ command: z.string().trim().min(1).max(4000) }).parse(req.body);
+  const { q } = debugSession(id, { editable: true });
+  if (terminalBusy.has(id)) throw Object.assign(new Error("A command is still running. Stop it first."), { statusCode: 429 });
+  terminalBusy.add(id);
+  const send = sse(reply);
+  const abort = new AbortController();
+  reply.raw.on("close", () => abort.abort());
+  try {
+    const r = await runCommand(id, { command: q.project!.command }, command, (out) => send({ out }), abort.signal);
+    const entry = S.appendActivity(id, { kind: "command", at: new Date().toISOString(), command, exitCode: r.exitCode, output: r.output.slice(-8000), ms: r.ms, ...(r.timedOut ? { timedOut: true } : {}) });
+    send({ done: true, entry });
+  } catch (err) {
+    send({ error: (err as Error).message });
+  } finally {
+    terminalBusy.delete(id);
+    reply.raw.end();
+  }
+});
+
+/** Runs the question's sample checks against the project (not in strict mode). */
+app.post("/api/sessions/:id/checks", async (req) => {
+  const { id } = IdParams.parse(req.params);
+  const { state, q, dir } = debugSession(id, { editable: true });
+  if (state.config.strictness === "strict") throw Object.assign(new Error("Strict mode: verify the fix yourself in the app and the terminal."), { statusCode: 400 });
+  const result = await runChecks(q.dir, dir, "public");
+  const rec = S.recordRun(state, undefined, changesDiff(projectChanges(q.project!.dir, dir)), result);
+  return { result, run: rec.n, summary: summarizeRun(rec) };
 });
 
 // ---------------------------------------------------------------- interviewer chat (SSE)
@@ -404,7 +533,10 @@ app.post("/api/sessions/:id/chat", async (req, reply) => {
   busy.add(id);
   try {
     const provider = getProvider(state.config.provider);
-    const messages = buildChatMessages(transcript, workspaceSnapshot(q, state, S.listRuns(id), state.config.format === "ai" ? S.readAiLog(id) : undefined));
+    const messages = buildChatMessages(
+      transcript,
+      workspaceSnapshot(q, state, S.listRuns(id), state.config.format === "ai" ? S.readAiLog(id) : undefined, q.project ? S.readActivity(id) : undefined),
+    );
     const text = await provider.chat(
       { system: interviewerSystemPrompt(q, state), messages, effort: state.config.strictness === "coach" ? "medium" : "low" },
       (delta) => send({ delta }),
@@ -523,6 +655,13 @@ if (fs.existsSync(webDist)) {
 
 const port = Number(process.env.PORT ?? 4317);
 loadQuestions(); // validate the library at startup
+await cleanupStaleApps();
+for (const sig of ["SIGINT", "SIGTERM"] as const)
+  process.once(sig, () => {
+    stopAllApps();
+    process.exit(0);
+  });
+process.once("exit", stopAllApps);
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 checkRunner().then((r) => r.message && console.log(`[runner] ${r.message}`));
 await app.listen({ port, host: "127.0.0.1" });

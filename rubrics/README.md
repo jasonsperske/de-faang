@@ -145,6 +145,66 @@ These rubrics follow the shape of the structured interview scorecards used at la
 
 </details>
 
+## debugging
+
+**Debugging interview rubric** · [`debugging.json`](debugging.json)
+
+| Dimension | Weight | What the evaluator looks for | Learn more |
+|---|---|---|---|
+| Reproducing & scoping the bug | 15% | Read the bug report closely; reproduced the symptom in the running app before changing code; turned the report into concrete expected vs. actual values (e.g. 'Acme should show 3 orders and $599.85'); checked whether the bug affects one row or many, and which columns. | [David Agans — Debugging: the 9 indispensable rules](https://debuggingrules.com/)<br>[Julia Evans — A debugging manifesto](https://jvns.ca/blog/2022/12/08/a-debugging-manifesto/) |
+| Investigation & navigating unfamiliar code | 20% | Worked out how the app fits together without a diagram: traced the data from the table component through the API call and route to the query; used the browser, the terminal and the database (queries, logs, API responses) to look at real data at each layer; narrowed down the faulty layer with evidence instead of reading every file or guessing. | [Julia Evans — A debugging manifesto](https://jvns.ca/blog/2022/12/08/a-debugging-manifesto/)<br>[React — React Developer Tools](https://react.dev/learn/react-developer-tools)<br>[SQLite — SELECT (joins, GROUP BY, ORDER BY, common table expressions)](https://www.sqlite.org/lang_select.html) |
+| Root-cause analysis | 25% | Formed explicit hypotheses and tested them; explained the mechanism of each defect (why the counts multiply, why the cents disappear, why some values are empty), not just where it is; found every independent cause behind the symptoms; distinguished causes from symptoms. | [SQLite — Built-in aggregate functions (SUM, COUNT, TOTAL and NULLs)](https://www.sqlite.org/lang_aggfunc.html)<br>[SQLite — SQL expressions (operators, integer division, NULL)](https://www.sqlite.org/lang_expr.html)<br>[SQLite — SELECT (joins, GROUP BY, ORDER BY, common table expressions)](https://www.sqlite.org/lang_select.html) |
+| Fix correctness & quality | 20% | The fix addresses the cause in the right layer, keeps the API's contract, handles edge cases (customers without orders or refunds, voided orders, duplicate amounts), and keeps sorting and search working. Hidden checks are ground truth. The change is minimal, readable, and explained. | [SQLite — Built-in aggregate functions (SUM, COUNT, TOTAL and NULLs)](https://www.sqlite.org/lang_aggfunc.html)<br>[SQLite — SELECT (joins, GROUP BY, ORDER BY, common table expressions)](https://www.sqlite.org/lang_select.html) |
+| Verification & testing | 10% | Confirmed the fix against the values in the bug report and against independent data (e.g. a direct query of the base tables); checked edge cases and that nothing else regressed (other columns, sorting, search); suggested a test that would have caught the bug. | [David Agans — Debugging: the 9 indispensable rules](https://debuggingrules.com/) |
+| Communication | 10% | Narrated hypotheses and what each step was meant to show; kept the interviewer oriented while exploring; explained the root cause and the fix clearly, as they would to the person who filed the bug. | [Tech Interview Handbook — Coding interview techniques](https://www.techinterviewhandbook.org/coding-interview-techniques/) |
+
+<details>
+<summary>Level descriptors</summary>
+
+**Reproducing & scoping the bug**
+
+- **1:** Started editing code without reproducing the bug or stating what correct looks like.
+- **2:** Reproduced the symptom only partially, or never pinned down the expected values.
+- **3:** Reproduced the bug, stated expected vs. actual, and scoped which rows and columns are wrong.
+- **4:** Quickly built a precise picture of the failure (all the symptoms, which data triggers them) that guided the rest of the round.
+
+**Investigation & navigating unfamiliar code**
+
+- **1:** Wandered through files or changed code at random; never located where the wrong values come from.
+- **2:** Found the right area only with significant hints, or by reading code without checking data.
+- **3:** Traced the data path layer by layer and used real data (API responses, SQL queries) to find the faulty layer.
+- **4:** Bisected the system efficiently (e.g. compared the API response with a direct query of the base tables) and explained the architecture they had discovered.
+
+**Root-cause analysis**
+
+- **1:** Did not find the cause, or 'fixed' a symptom (UI formatting, a special case) without understanding why it happened.
+- **2:** Found one cause but missed others, or couldn't explain the mechanism.
+- **3:** Found every cause and explained each mechanism correctly.
+- **4:** Explained each mechanism precisely with evidence, and generalised it (where else the same mistake could hide, how to spot it in review).
+
+**Fix correctness & quality**
+
+- **1:** No working fix, or a fix that breaks other behaviour.
+- **2:** Fixes the reported rows but fails edge cases or changes the API's contract.
+- **3:** A correct, minimal fix in the right layer that passes the hidden checks.
+- **4:** A clean, well-explained fix that is robust to edge cases, plus sensible notes on follow-up hardening.
+
+**Verification & testing**
+
+- **1:** Declared victory without checking.
+- **2:** Checked only the one row from the bug report.
+- **3:** Verified the reported values, a couple of edge cases, and the rest of the table.
+- **4:** Verified systematically, and proposed a regression test or monitoring that would catch this class of bug.
+
+**Communication**
+
+- **1:** Silent or incoherent; the interviewer could not follow the investigation.
+- **2:** Explained some steps, but often went quiet or was hard to follow.
+- **3:** Clear narration of hypotheses, findings and the fix.
+- **4:** Exceptionally clear: structured, concise, and pitched for both engineers and the bug reporter.
+
+</details>
+
 ## system-design
 
 **System design interview rubric** · [`system-design.json`](system-design.json)

@@ -1,0 +1,86 @@
+{
+  "id": "account-revenue-table",
+  "title": "Wrong Revenue in the Accounts Table",
+  "type": "debugging",
+  "difficulty": "medium",
+  "durationMinutes": 45,
+  "tags": [
+    "react",
+    "sql",
+    "sqlite",
+    "joins",
+    "aggregation"
+  ],
+  "rubric": "debugging",
+  "app": {
+    "command": [
+      "npm",
+      "run",
+      "dev"
+    ],
+    "open": "src/components/AccountsTable.jsx"
+  },
+  "followUps": [
+    "Explain the root cause of each symptom in the bug report to Priya in two or three sentences she would understand, then explain it to an engineer reviewing your fix.",
+    "Why does joining orders and refunds to customers in the same query inflate the numbers? Name two other correct ways to write the query and the tradeoffs between them.",
+    "What automated test would have caught this bug before it shipped? Describe its data and assertions, and where in the stack it would run.",
+    "Money is stored as integer cents. What are the risks of turning it into floating-point dollars in the API, and how would you design the API's money fields if you could change the contract?",
+    "This bug reached Finance's month-end close. What would you change in the team's process or monitoring so a wrong aggregate is noticed sooner?"
+  ],
+  "interviewer": {
+    "approach": "The table component renders whatever GET /api/accounts returns; the bug is in the SQL in server/accounts.js, which has three independent defects. (1) Join fan-out: customers is LEFT JOINed to paid orders AND to refunds in one query, so each customer gets (paid orders × refunds) rows before GROUP BY. COUNT(o.id) and SUM(o.amount_cents) are multiplied by the number of refunds and SUM(r.amount_cents) by the number of orders (Acme: 3 orders × 2 refunds = 6 rows, so 6 orders and double gross). (2) Integer division: amounts are integer cents and `/ 100` is integer division in SQLite, so cents are truncated (59985 / 100 = 599). (3) NULL arithmetic: a customer with no refunds has SUM(r.amount_cents) = NULL, so net = (gross - NULL) = NULL, which the table renders as an empty cell (and the footer total skips); a customer with no orders gets NULL everywhere. A strong fix aggregates orders and refunds separately (CTEs or subqueries grouped by customer_id, or correlated subqueries) and LEFT JOINs the aggregates, divides by 100.0, and wraps the sums in COALESCE(…, 0), keeping the API's shape (dollars) and sorting/search intact. A strong candidate reproduces the Acme numbers first, traces table → src/api.js → server/index.js → server/accounts.js, confirms with `npm run db:query` against the base tables (e.g. SELECT COUNT(*) FROM orders WHERE customer_id = 1 AND status = 'paid'), explains each mechanism, and verifies the whole table and edge cases afterwards.",
+    "hints": [
+      "Start from the bug report: what exactly should Acme's row show, and what does it show? Where does the table get those numbers?",
+      "Compare what the API returns for Acme with what's actually in the database. The terminal can query it directly.",
+      "Look at how many rows the query produces for Acme before the GROUP BY. What happens when a customer has several orders and several refunds?",
+      "Aggregate orders and refunds separately (per customer) and then join the aggregates to customers. Then look at what `/ 100` does with integer cents, and what SUM returns for a customer with no refunds."
+    ],
+    "pitfalls": [
+      "Fixing the symptom in the UI: formatting null as $0.00, or dividing in the component, while the API stays wrong (Finance's export uses the API).",
+      "Using COUNT(DISTINCT o.id) for the count but SUM(DISTINCT o.amount_cents) for the totals, which silently drops orders or refunds with the same amount.",
+      "Fixing only the fan-out and missing the integer division or the NULL net (or the reverse).",
+      "Special-casing Acme or the seed data, or editing data/seed.json or the database instead of the query.",
+      "Dropping the status = 'paid' filter while restructuring the query, so voided invoices count as revenue.",
+      "Changing the API's response shape (e.g. returning cents or strings), which breaks the finance export.",
+      "Breaking sorting or search while rewriting the query (e.g. ORDER BY on a column alias that no longer exists)."
+    ]
+  },
+  "resources": [
+    "sqlite-aggregates",
+    "sqlite-expressions",
+    "sqlite-select",
+    "jvns-debugging-manifesto",
+    "debugging-rules",
+    "node-sqlite",
+    "react-devtools",
+    "vite-hmr"
+  ],
+  "ai": {
+    "rubric": "ai-coding",
+    "dimensions": [
+      {
+        "id": "debug_ai_grounding",
+        "name": "Grounding the AI in the real codebase",
+        "weight": 0.15,
+        "signals": "The AI can only see what the candidate shows it. Strong candidates first work out the app's structure themselves (or with targeted questions), attach the relevant files, and check the AI's claims about the code and the data against the actual files and database before acting on them. They catch AI fixes that hide the symptom, and verify AI-written SQL with real queries.",
+        "levels": {
+          "1": "Pasted the bug report and applied whatever the AI suggested, including changes to files the AI had never seen.",
+          "2": "Gave the AI the right file eventually, but adopted its fix without checking the data or the edge cases.",
+          "3": "Located the faulty query themselves, gave the AI focused context, and verified its SQL against the database and the bug report.",
+          "4": "Used the AI as a sharp second opinion: asked for hypotheses, rejected the wrong ones with evidence, and confirmed the final fix with independent queries and edge cases."
+        },
+        "resources": [
+          "jvns-debugging-manifesto",
+          "sqlite-aggregates"
+        ]
+      }
+    ],
+    "watchFor": [
+      "The AI suggests SUM(DISTINCT …) or COUNT(DISTINCT …) everywhere, which hides the fan-out on the sample data but drops orders or refunds with identical amounts.",
+      "The AI 'fixes' the empty Net column in the React component (e.g. `?? 0`) instead of the query, leaving the API wrong for Finance's export.",
+      "The AI invents file names, a schema, or an ORM that this project doesn't have, because it hasn't seen the code.",
+      "The AI rewrites the query and drops the status = 'paid' filter or the search and sort clauses.",
+      "The AI suggests editing the seed data or the database to make Acme's row match."
+    ]
+  }
+}

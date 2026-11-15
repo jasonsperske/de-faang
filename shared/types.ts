@@ -1,13 +1,14 @@
 // Types shared between the server and the web UI.
 
-export type QuestionType = "coding" | "system-design";
+export type QuestionType = "coding" | "debugging" | "system-design";
 export type Difficulty = "easy" | "medium" | "hard";
-export type Language = "python" | "javascript" | "typescript" | "go" | "c" | "cpp" | "rust" | "java";
+export type Language = "python" | "javascript" | "typescript" | "go" | "c" | "cpp" | "rust" | "java" | "csharp";
 export const LANGUAGES: { id: Language; label: string; ext: string; monaco: string; tabSize: number; insertSpaces: boolean }[] = [
   { id: "python", label: "Python 3", ext: "py", monaco: "python", tabSize: 4, insertSpaces: true },
   { id: "javascript", label: "JavaScript (Node)", ext: "js", monaco: "javascript", tabSize: 2, insertSpaces: true },
   { id: "typescript", label: "TypeScript (Node)", ext: "ts", monaco: "typescript", tabSize: 2, insertSpaces: true },
   { id: "java", label: "Java 25", ext: "java", monaco: "java", tabSize: 4, insertSpaces: true },
+  { id: "csharp", label: "C# 14 (.NET 10)", ext: "cs", monaco: "csharp", tabSize: 4, insertSpaces: true },
   { id: "cpp", label: "C++20 (GCC)", ext: "cpp", monaco: "cpp", tabSize: 4, insertSpaces: true },
   { id: "c", label: "C17 (GCC)", ext: "c", monaco: "c", tabSize: 4, insertSpaces: true },
   { id: "go", label: "Go 1.25", ext: "go", monaco: "go", tabSize: 4, insertSpaces: false },
@@ -25,7 +26,7 @@ export type Provider = "claude" | "codex" | "gemini" | "muse";
 export type Strictness = "strict" | "standard" | "coach";
 export type Verbosity = "terse" | "normal" | "detailed";
 
-/** classic: a normal coding round. ai: the candidate also has an AI assistant (coding questions only). */
+/** classic: a normal round. ai: the candidate also has an AI assistant (coding and debugging questions). */
 export type InterviewFormat = "classic" | "ai";
 
 export interface SessionConfig {
@@ -52,7 +53,7 @@ export interface AiPolicy {
  * assistant, exactly what was sent, what came back, and what they did with it.
  */
 export type AiLogEntry =
-  | { kind: "prompt"; at: string; text: string; attachProblem: boolean; attachCode: boolean; language?: Language; sent: string }
+  | { kind: "prompt"; at: string; text: string; attachProblem: boolean; attachCode: boolean; language?: Language; file?: string; sent: string }
   | { kind: "response"; at: string; text: string; error?: string }
   | { kind: "insert" | "replace" | "copy"; at: string; code: string; lines: number; source: "button" | "selection" }
   | { kind: "paste"; at: string; code: string; lines: number; fromAi: boolean }
@@ -160,6 +161,34 @@ export interface SessionState {
   followUpAnswers?: string[];
 }
 
+/** Debugging questions: a file in the candidate's copy of the project. */
+export interface ProjectFile {
+  path: string;
+  size: number;
+  /** Binary files (e.g. the SQLite database) are listed but can't be opened in the editor. */
+  binary?: boolean;
+}
+
+/** Debugging questions: the project's dev server (in Docker, or on the host with the local runner). */
+export interface AppStatus {
+  state: "stopped" | "starting" | "running" | "failed";
+  mode: "docker" | "local";
+  /** Where the browser can load the running app (the iframe in the Preview tab). */
+  url?: string;
+  message?: string;
+  /** The dev server's recent output. */
+  logs: string;
+}
+
+/**
+ * Debugging questions: what the candidate did in the project (sessions/<id>/activity.jsonl).
+ * Files opened and terminal commands show how they investigated; the evaluator reads it.
+ */
+export type ActivityEntry =
+  | { kind: "open"; at: string; path: string }
+  | { kind: "create" | "delete"; at: string; path: string }
+  | { kind: "command"; at: string; command: string; exitCode: number | null; output: string; ms: number; timedOut?: boolean };
+
 export interface PartView {
   index: number;
   id: string;
@@ -178,6 +207,8 @@ export interface QuestionView extends QuestionSummary {
   publicTests?: TestCase[]; // omitted in strict mode
   signature?: { kind: "function" | "class"; entry: Partial<Record<Language, string>> };
   followUps?: string[]; // only once the candidate has submitted
+  /** Debugging questions: the project's files, the editor's first file, and whether sample checks can be run. */
+  project?: { files: ProjectFile[]; open?: string; checks: boolean };
 }
 
 export interface SessionView {
@@ -190,6 +221,8 @@ export interface SessionView {
   lastPartResult?: RunResult;
   /** AI-assisted rounds: the assistant log. */
   ai?: AiLogEntry[];
+  /** Debugging questions: files opened and terminal commands run. */
+  activity?: ActivityEntry[];
 }
 
 export type HireDecision = "strong_hire" | "hire" | "lean_hire" | "lean_no_hire" | "no_hire";

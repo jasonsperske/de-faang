@@ -1,0 +1,11 @@
+{
+  "name": "defaang-node-dev",
+  "private": true,
+  "description": "npm dependencies preinstalled for de-faang debugging questions. Versions match de-faang's own package-lock.json, which the local runner uses instead.",
+  "dependencies": {
+    "@vitejs/plugin-react": "6.3.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "vite": "8.3.8"
+  }
+}

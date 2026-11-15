@@ -25,7 +25,7 @@ function write(rel, content) {
 }
 const read = (p) => JSON.parse(fs.readFileSync(path.join(root, p), "utf8"));
 const resources = new Map(read("resources/resources.json").map((r) => [r.id, r]));
-const RUBRIC_ORDER = ["coding", "ai-coding", "system-design"]; // any others follow alphabetically
+const RUBRIC_ORDER = ["coding", "ai-coding", "debugging", "system-design"]; // any others follow alphabetically
 const rubricRank = (id) => (RUBRIC_ORDER.includes(id) ? RUBRIC_ORDER.indexOf(id) : RUBRIC_ORDER.length);
 const rubrics = Object.fromEntries(
   fs
@@ -42,6 +42,7 @@ const link = (id) => {
 };
 const pct = (w) => `${Math.round(w * 100)}%`;
 const cap = (s) => s[0].toUpperCase() + s.slice(1);
+const TYPE_LABEL = { coding: "Coding", debugging: "Debugging", "system-design": "System design" };
 
 function promptSummary(dir) {
   const text = fs.readFileSync(path.join(dir, "prompt.md"), "utf8").split("\n");
@@ -89,7 +90,8 @@ function approachBlock(interviewer, title) {
 }
 
 const index = [];
-for (const type of ["coding", "system-design"]) {
+for (const type of ["coding", "debugging", "system-design"]) {
+  if (!fs.existsSync(path.join(root, "questions", type))) continue;
   for (const id of fs.readdirSync(path.join(root, "questions", type)).sort()) {
     const dir = path.join(root, "questions", type, id);
     if (!fs.statSync(dir).isDirectory()) continue;
@@ -97,7 +99,7 @@ for (const type of ["coding", "system-design"]) {
     const md = [];
     md.push(`# ${q.title}`, "");
     const meta = [
-      `**Type:** ${type === "coding" ? "Coding" : "System design"}`,
+      `**Type:** ${TYPE_LABEL[type]}`,
       `**Difficulty:** ${cap(q.difficulty)}`,
       `**Time:** ${q.durationMinutes} min`,
       `**Tags:** ${q.tags.map((t) => `\`${t}\``).join(" ")}`,
@@ -107,6 +109,14 @@ for (const type of ["coding", "system-design"]) {
     md.push(meta.join(" · "), "");
     md.push(promptSummary(dir), "");
     md.push(`Full prompt: [prompt.md](prompt.md)${q.parts ? " (each part's prompt is in `parts/<part-id>/prompt.md`, revealed during the round)" : ""}.`, "");
+    if (type === "debugging") {
+      md.push(
+        "## The round",
+        "",
+        "You get a bug report ([prompt.md](prompt.md)) and a copy of the app in [`project/`](project/), running with hot reloading (in Docker, or on your machine with the local runner). There's no architecture overview: finding your way around is part of the exercise. The prompt panel has a **Files** tab for browsing and opening the project's files, and the panel under the editor has the app's **Preview**, its **Logs**, and a **Terminal**. Your fix is graded by checks against the sample data and a hidden dataset ([`checks/`](checks/), a spoiler), and by how you investigated.",
+        "",
+      );
+    }
 
     if (q.parts) {
       md.push("## Parts", "", "| # | Part | Time |", "|---|---|---|");
@@ -195,28 +205,29 @@ write("rubrics/README.md", r.join("\n"));
 
 // Tables in the top-level README
 const DIFFICULTY = { easy: 0, medium: 1, hard: 2 };
+const TYPES = ["coding", "debugging", "system-design"];
 const TYPE_TAGS = new Set(["multipart", "system-design"]); // already shown in other columns
 const rubricLink = (id) => `[${id}](rubrics/README.md#${id})`;
 const rows = index
   .slice()
   .sort((a, b) =>
-    (a.type === b.type ? 0 : a.type === "coding" ? -1 : 1) ||
+    TYPES.indexOf(a.type) - TYPES.indexOf(b.type) ||
     (DIFFICULTY[a.q.difficulty] ?? 9) - (DIFFICULTY[b.q.difficulty] ?? 9) ||
     a.q.durationMinutes - b.q.durationMinutes ||
     a.q.title.localeCompare(b.q.title),
   )
   .map(({ type, id, q }) => {
-    const notes = [q.parts ? `${q.parts.length}-part` : null, q.ai ? "AI-assisted option" : null].filter(Boolean).join(", ");
+    const notes = [q.parts ? `${q.parts.length}-part` : null, type === "debugging" ? "Runs the app, with a terminal" : null, q.ai ? "AI-assisted option" : null].filter(Boolean).join(", ");
     const topics = q.tags.filter((t) => !TYPE_TAGS.has(t)).map((t) => `\`${t}\``).join(" ");
     const rubric = rubricLink(q.rubric) + (q.ai ? ` + ${rubricLink(q.ai.rubric)}` : "");
-    return `| [${q.title}](questions/${type}/${id}/README.md) | ${type === "coding" ? "Coding" : "System design"} | ${cap(q.difficulty)} | ${q.durationMinutes} min | ${topics} | ${rubric} | ${notes || "—"} |`;
+    return `| [${q.title}](questions/${type}/${id}/README.md) | ${TYPE_LABEL[type]} | ${cap(q.difficulty)} | ${q.durationMinutes} min | ${topics} | ${rubric} | ${notes || "—"} |`;
   });
 const questionTable = ["| Question | Type | Difficulty | Time | Topics | Rubric | Notes |", "|---|---|---|---|---|---|---|", ...rows].join("\n");
 
 const usedFor = {};
 for (const { type, q } of index) {
-  (usedFor[q.rubric] ??= new Set()).add(type === "coding" ? "Coding rounds" : "System design rounds");
-  if (q.ai) (usedFor[q.ai.rubric] ??= new Set()).add("AI-assisted coding rounds");
+  (usedFor[q.rubric] ??= new Set()).add(`${TYPE_LABEL[type]} rounds`);
+  if (q.ai) (usedFor[q.ai.rubric] ??= new Set()).add(type === "debugging" ? "AI-assisted debugging rounds" : "AI-assisted coding rounds");
 }
 const rubricTable = [
   "| Rubric | Used for | Dimensions |",

@@ -28,7 +28,7 @@ type MonacoEditor = Parameters<OnMount>[0];
 
 const norm = (l: string) => l.trim().replace(/\s+/g, " ");
 /** Whether pasted text came from an AI reply: most of its non-trivial lines appear in one. */
-function fromAi(pasted: string, log: AiLogEntry[]): boolean {
+export function fromAi(pasted: string, log: AiLogEntry[]): boolean {
   const replies = log.filter((e) => e.kind === "response").map((e) => (e as { text: string }).text);
   const aiLines = new Set(replies.flatMap((t) => t.split("\n")).map(norm).filter((l) => l.length >= 4));
   const lines = pasted.split("\n").map(norm).filter((l) => l.length >= 4);
@@ -312,8 +312,8 @@ function CaseRow({ c }: { c: CaseResult }) {
             </div>
           )}
           <div>
-            <label>input</label>
-            <code>{fmtJson(c.args)}</code>
+            <label>{typeof c.args === "string" ? "check" : "input"}</label>
+            <code>{typeof c.args === "string" ? c.args : fmtJson(c.args)}</code>
           </div>
           {c.error ? (
             <div>
