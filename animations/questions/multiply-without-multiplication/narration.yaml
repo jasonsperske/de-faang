@@ -1,0 +1,110 @@
+# Narration for the multiply-without-multiplication teaching video.
+# Each beat is one paragraph of voiceover; scene.py plays one block of animation
+# under each beat, by id. Edit the words freely: audio is re-rendered only for
+# beats whose text changed. Write numbers the way they should be spoken.
+title: Multiply without the multiplication operator
+sections:
+  - title: Intro
+    beats:
+      - id: intro
+        text: >
+          Multiply two integers without using the multiplication operator.
+          It sounds like a trick question, but it's really a test of whether you can
+          read constraints as hints. Let's look at what the prompt is telling you,
+          how to recognize the pattern underneath it, and how to think your way to a
+          solution you can defend.
+
+  - title: What to look for
+    beats:
+      - id: constraints
+        text: >
+          Start with the rules, because they're the biggest clue. Star, slash and
+          percent are banned, along with anything like pow or Math dot imul.
+          But look at what's explicitly allowed: addition, subtraction, and every
+          bitwise operator. When an interviewer goes out of their way to hand you
+          shifts and ANDs, they're telling you the answer lives in binary.
+      - id: target
+        text: >
+          The second clue is the performance target: running time that grows with
+          the number of bits, not with the size of the numbers. That rules out the
+          obvious answer. Adding a to itself b times is correct, but with b near
+          sixty-seven million, that's sixty-seven million additions. One step per bit
+          is about twenty-six.
+
+  - title: Spot the pattern
+    beats:
+      - id: binary
+        text: >
+          So write one operand in binary. Take six times seven. Seven in binary is
+          one, one, one, which means four plus two plus one. Multiplication
+          distributes over that sum, so six times seven is six times four, plus six
+          times two, plus six times one.
+      - id: doubling
+        text: >
+          And six times a power of two needs no multiplication at all. Each one is
+          double the last: six, twelve, twenty-four. In binary, doubling is just a
+          left shift. The digits slide over and a zero fills in behind them.
+      - id: long-multiplication
+        text: >
+          Put those together and you get the pattern: shift and add, also known as
+          Russian peasant multiplication. It's the long multiplication you learned
+          in school, done in base two. Because every digit of the multiplier is
+          zero or one, each row is either the shifted number or nothing at all.
+          Add the rows, and you have the product.
+
+  - title: Think it through
+    beats:
+      - id: loop
+        text: >
+          Now turn that into a loop. Look at the lowest bit of b. If it's a one,
+          add a to the result. Then shift a left to double it, shift b right to
+          move on to the next bit, and repeat until b runs out of bits.
+      - id: trace-start
+        text: >
+          Let's trace thirteen times eleven. Eleven in binary is one, zero, one, one.
+      - id: trace-1
+        text: >
+          The lowest bit is one, so add thirteen. The result is thirteen.
+      - id: trace-2
+        text: >
+          Shift. a doubles to twenty-six, and b drops its last bit. The new lowest
+          bit is one, so add twenty-six, making thirty-nine.
+      - id: trace-3
+        text: >
+          Shift again. a is fifty-two, but this bit is zero, so we skip it.
+      - id: trace-4
+        text: >
+          One last shift. a is a hundred and four, the bit is one, and the result is
+          a hundred and forty-three. Four steps, one per bit of eleven.
+      - id: signs
+        text: >
+          Now the details interviewers watch for. Handle the sign first: the answer
+          is negative when exactly one operand is negative, so record that, then
+          work with absolute values. Don't shift a negative number right inside the
+          loop. In Python, Java and C, minus one shifted right is still minus one,
+          and the loop never ends.
+      - id: smaller-and-wide
+        text: >
+          Two more. Drive the loop with the smaller operand, so the step count
+          depends on the shorter bit length. And in Java, C, or Go, accumulate in a
+          sixty-four bit integer, because two to the twenty-sixth squared doesn't
+          fit in thirty-two bits.
+      - id: code
+        text: >
+          Here's the whole solution. Record the sign, take absolute values, put
+          the smaller one in b, then shift and add. Logarithmic time, constant
+          space, and every line is something you can explain.
+
+  - title: Recap
+    beats:
+      - id: recap
+        text: >
+          So here's what to carry into the next interview. When a problem bans an
+          operator but hands you bitwise ones, think binary. When the target is
+          the number of bits, look for one step per bit. And when you can write the
+          answer as a sum of doublings, reach for shift and add.
+      - id: follow-up
+        text: >
+          Expect the follow-up: division under the same rules. It's the same idea in
+          reverse. Double the divisor until it's too big, subtract the largest
+          multiple that fits, and repeat.

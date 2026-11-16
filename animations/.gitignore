@@ -1,0 +1,3 @@
+# Rendered narration audio and videos. Audio is keyed by a hash of the text and
+# voice, so re-rendering only calls ElevenLabs for lines that changed.
+build/

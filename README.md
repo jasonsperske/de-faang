@@ -186,6 +186,10 @@ Then run `npm run readmes` to generate the question's `README.md` and its row in
 - **Rubrics** live in `rubrics/*.json` (weighted dimensions with 1–4 level descriptors).
 - **Resources** live in `resources/resources.json`. The evaluator can link **only** to ids in this library, so links can't be hallucinated.
 
+## Teaching animations
+
+[`animations/`](animations/) has narrated explainer videos for individual questions, built with [3Blue1Brown's manim](https://github.com/3b1b/manim) and [ElevenLabs](https://elevenlabs.io) narration. Each one covers what to look for in the prompt, how to recognise the pattern, and how to think through the solution, then recaps the signals to carry to other problems. Videos so far: `multiply-without-multiplication` and `monorepo-build-order`. Render with `python animations/render.py <question-id>` (set `ELEVENLABS_API_KEY` for narration; without it you get a silent draft with captions). See [animations/README.md](animations/README.md).
+
 ## AI-assisted rounds
 
 Choose **AI-assisted** in the setup dialog of any coding or debugging question. The console under the editor gains an **✦ AI assistant** tab, next to Results and Custom input. It uses the same LLM provider as the interviewer.

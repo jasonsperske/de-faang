@@ -1,0 +1,5 @@
+# 3Blue1Brown's manim (manimgl), pinned to a commit: the 1.7.2 release on PyPI
+# imports pkg_resources and fails on Python 3.12+.
+manimgl @ git+https://github.com/3b1b/manim.git@fafa083a4fb274bba9cabde0b6e2f50ba6da0622
+av
+PyYAML

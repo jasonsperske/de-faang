@@ -1,0 +1,107 @@
+# Narration for the monorepo-build-order teaching video.
+# Each beat is one paragraph of voiceover; scene.py plays one block of animation
+# under each beat, by id. Edit the words freely: audio is re-rendered only for
+# beats whose text changed.
+title: Monorepo build order and affected packages
+sections:
+  - title: Intro
+    beats:
+      - id: intro
+        text: >
+          Monorepo build order. It's framed as a build tooling question, but
+          underneath is one of the most common patterns in coding interviews. Let's
+          look at which words in the prompt give it away, how to name the pattern,
+          and how to think through both parts.
+
+  - title: What to look for
+    beats:
+      - id: words
+        text: >
+          Listen for the relationship words. Package a depends on package b, so b
+          must be built before a. Any time you have a set of things, and a rule that
+          one has to come before another, you're looking at a directed graph. The
+          packages are nodes, and each dependency is an edge.
+      - id: phrases
+        text: >
+          Two more phrases shape the solution. "If the dependencies contain a cycle,
+          return an empty list" tells you the graph might not be acyclic, so you'll
+          have to detect that. And "build the alphabetically smallest ready package
+          first" tells you the output must be deterministic. Hold on to that one;
+          it decides your data structure.
+
+  - title: Spot the pattern
+    beats:
+      - id: toposort
+        text: >
+          Ordering the nodes of a directed graph so every edge points forward is a
+          topological sort. Before writing anything, pick an edge direction and say
+          it out loud: the arrow goes from the dependency to the dependent, from
+          utils to api client. Most bugs in this problem come from getting that
+          backwards.
+      - id: kahn
+        text: >
+          There are two standard ways to sort topologically. Depth first search,
+          emitting nodes in post-order, or Kahn's algorithm, which repeatedly builds
+          whatever has no unbuilt dependencies left. The prompt literally talks
+          about packages being ready, which is Kahn's algorithm, so that's the one
+          to reach for.
+
+  - title: Think it through
+    beats:
+      - id: indegree
+        text: >
+          For every package, count how many dependencies it's still waiting on.
+          That's its in-degree. Design tokens and utils depend on nothing, so they
+          start at zero. They're ready.
+      - id: heap-1
+        text: >
+          Put the ready packages in a min heap, so the smallest name is always on
+          top. Pop design tokens and build it. Then walk its outgoing edges and
+          decrement each dependent. UI kit drops from two to one.
+      - id: heap-2
+        text: >
+          Pop utils. API client and UI kit both reach zero and go into the heap.
+      - id: heap-3
+        text: >
+          API client comes out first, alphabetically, and web app drops to one.
+          Then UI kit, which frees both docs site and web app. Docs site, then web
+          app, and every package is built.
+      - id: why-heap
+        text: >
+          Why a heap, and not a list you sort once at the start? Because packages
+          become ready in the middle of the run. A list sorted up front gets the
+          first tie right and every later tie wrong. The heap keeps the tie-break
+          rule true at every step, for a log factor.
+      - id: cycle
+        text: >
+          And cycles fall out for free. If the heap empties before every package is
+          built, the leftovers are all waiting on each other. That's a cycle, so
+          return an empty list. The whole thing is order V plus E, times log V for
+          the heap.
+      - id: affected-direction
+        text: >
+          Part two asks which packages a pull request affects. The question to ask
+          is which way the breakage travels. If utils changes, anything that depends
+          on utils might break, so walk the arrows forward, from the dependency to
+          its dependents, and mark everything you can reach. Design tokens isn't
+          downstream of utils, so it's safe.
+      - id: affected-order
+        text: >
+          Then don't return them in the order you found them. Take part one's build
+          order and filter it down to the marked set. You get the right order for
+          free, and you've reused everything you already built.
+
+  - title: Recap
+    beats:
+      - id: recap
+        text: >
+          To recap. Words like before, depends on, or prerequisite mean a directed
+          graph. Needing an order over that graph means topological sort. Ready-set
+          language plus a tie-break rule means Kahn's algorithm with a min heap. And
+          when you're asked what a change affects, walk the edges in the direction
+          the breakage travels.
+      - id: follow-up
+        text: >
+          A good follow-up to prepare for: with eight build machines and known build
+          times, how would you schedule the builds in parallel? It's the same ready
+          set, but now several packages can come out of it at once.
